@@ -18,9 +18,6 @@ def build_unitary(p, q):
     # straightforward
     M = q[:, np.newaxis] @ p[np.newaxis]
 
-    # a quick check to see that M looks as expect HARD-CODED, FIXME
-    assert M.shape == (3,3)
-
     u, s, vt = np.linalg.svd(M)
     return u @ vt
 
@@ -37,15 +34,18 @@ def get_path(A, T):
 
 if __name__ == '__main__':
     # test (homogeneous) polynomials
-    f = lambda x, y, z: x**2 + y**2 - z**2
-    g = lambda x, y, z: x + y - z
+    f = lambda x, y, z: x**6 + y**6 - z**6
+    g = lambda x, y, z : 3*x**5 + y**5 - z**5
 
     # count number of variables
     n = 3
 
+
     # zeros of test polynomials (found manually FIXME)
-    p = np.array([1, 1, sqrt(2)]) # zero of f
-    q = np.array([1, 1, 2])       # zero of g
+    s,t = np.random.rand(2)
+    p = np.array([s, t, (s**6 + t**6)**(1/6)])       # zero of f
+    s,t = np.random.rand(2)
+    q = np.array([s, t, (3*s**5 + t**5)**(1/5)])       # zero of g
 
 
     # scaled zeros of test polynomials
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
 
     # both zeros should now have magnitude 1,
-    assert np.linalg.norm(p) == np.linalg.norm(q)
+    assert np.isclose(np.linalg.norm(p), np.linalg.norm(q))
 
 
     # both zeros should also still satisfy their respective polynomials
@@ -72,12 +72,66 @@ if __name__ == '__main__':
     assert np.allclose(q, U @ p)
 
 
-    # now U \cdot f = f (U^(-1) @ q) = f(p) = 0 and also g (q) = 0, so q is
+
+
+    # an exercise in plotting FIXME
+
+    # TODO
+    # 1. add an axes argument that we can pass to a plotting function
+    # 2. refactor the variety shift bit into its own function (so it can be
+    #    easily reused)
+    # 3. generally improve labeling and ordering and comments
+    # 4. I don't fully understanding the fixing z part. In particular, I am
+    #    fixing z = p[-1] for the f variety and z = q[-1] for the g variety.
+    #    But then when I shift the f variety, I set... z = p[-1], which is
+    #    exactly what it's supposed to be... Not sure why I found that confusing,
+    #    but it is the right choice (according to a check of other values), so
+    #    I apparently understood something when I was doing it. (make a comment about this)
+
+    print('Determinant of U: ', np.linalg.det(U))
+
+    step = 100
+    ran = 2
+    xs = np.linspace(-ran,ran,step)
+    ys = np.linspace(-ran,ran,step)
+    X,Y = np.meshgrid(xs, ys)
+
+    plt.axis('equal')
+    plt.scatter(*p[0:-1], c='k')
+    plt.scatter(*q[0:-1], c='k')
+    # make order standard here FIXME
+    cs_f = plt.contour(X, Y, f(X,Y,p[-1]), levels=[0], colors='slateblue', alpha=0.45, algorithm='serial', linewidths=0.9)
+    cs_g = plt.contour(X, Y, g(X,Y,q[-1]), levels=[0], colors='k', alpha=1, linewidths=0.95, algorithm='serial')
+    # plt.show()
+
+    # collections is deprecated in matplotlib version 3.8, but
+    # I'm running 3.7.5 FIXME
+    new_xs = []
+    new_ys = []
+    count = 1
+    for vertex, code in cs_f.collections[0].get_paths()[0].iter_segments():
+        x,y = (U @ np.append(vertex,p[-1]))[0:-1]
+        if count == 1:
+            plt.scatter(*vertex, c='red')
+            plt.scatter(x,y, c='r')
+            count += 1
+        new_xs.append(x)
+        new_ys.append(y)
+
+    plt.plot(new_xs, new_ys, c='slateblue', linewidth=2)
+
+    # plt.legend()
+    plt.show()
+
+
+
+
+    # now (U \cdot f) (q) = f (U^(-1) @ q) = f(p) = 0 and also g (q) = 0, so q is
     # a common zero of the polynomial system F = (U \cdot f, g)
 
 
     # to make the start system truly generic, we hit this polynomial system
-    # by an arbitrary unitary matrix
+    # with an arbitrary unitary matrix
     V = get_random_unitary(n)
 
 
@@ -99,6 +153,7 @@ if __name__ == '__main__':
 
     # this choice of T might be giving us the needed Lipschitz continuity?
     T = sqrt( (1/sqrt(2)) * sum([np.linalg.norm(A_j) for A_j in A]) )
+
     path = get_path(A, T)
 
 
