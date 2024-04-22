@@ -2,6 +2,7 @@
 import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import cm
 
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
@@ -34,8 +35,14 @@ def get_path(A, T):
 
 if __name__ == '__main__':
     # test (homogeneous) polynomials
-    f = lambda x, y, z: x**6 + y**6 - z**6
-    g = lambda x, y, z : 3*x**5 + y**5 - z**5
+    # HARD CODED derivatives, FIXME
+    f = lambda x, y, z: x**2 + y**2 - z**2
+    df_x = lambda x, y, z: 2*x
+    df_y = lambda x, y, z: 2*y
+
+    g = lambda x, y, z : 3*x**8 + y**8 - z**8
+    dg_x = lambda x, y, z: 24*x**7
+    dg_y = lambda x, y, z: 8*y**7
 
     # count number of variables
     n = 3
@@ -43,10 +50,12 @@ if __name__ == '__main__':
 
     # zeros of test polynomials (found manually FIXME)
     s,t = np.random.rand(2)
-    p = np.array([s, t, (s**6 + t**6)**(1/6)])       # zero of f
+    p = np.array([s, t, (s**2 + t**2)**(1/2)])       # zero of f
     s,t = np.random.rand(2)
-    q = np.array([s, t, (3*s**5 + t**5)**(1/5)])       # zero of g
+    q = np.array([s, t, (3*s**8 + t**8)**(1/8)])       # zero of g
 
+    # p = [0.89893741, 0.48690801, 1.02233452]
+    # q = [0.70364412, 0.49015276, 0.80907222]
 
     # scaled zeros of test polynomials
     p = p / np.linalg.norm(p)
@@ -72,60 +81,6 @@ if __name__ == '__main__':
     assert np.allclose(q, U @ p)
 
 
-
-
-    # an exercise in plotting FIXME
-
-    # TODO
-    # 1. add an axes argument that we can pass to a plotting function
-    # 2. refactor the variety shift bit into its own function (so it can be
-    #    easily reused)
-    # 3. generally improve labeling and ordering and comments
-    # 4. I don't fully understanding the fixing z part. In particular, I am
-    #    fixing z = p[-1] for the f variety and z = q[-1] for the g variety.
-    #    But then when I shift the f variety, I set... z = p[-1], which is
-    #    exactly what it's supposed to be... Not sure why I found that confusing,
-    #    but it is the right choice (according to a check of other values), so
-    #    I apparently understood something when I was doing it. (make a comment about this)
-
-    print('Determinant of U: ', np.linalg.det(U))
-
-    step = 100
-    ran = 2
-    xs = np.linspace(-ran,ran,step)
-    ys = np.linspace(-ran,ran,step)
-    X,Y = np.meshgrid(xs, ys)
-
-    plt.axis('equal')
-    plt.scatter(*p[0:-1], c='k')
-    plt.scatter(*q[0:-1], c='k')
-    # make order standard here FIXME
-    cs_f = plt.contour(X, Y, f(X,Y,p[-1]), levels=[0], colors='slateblue', alpha=0.45, algorithm='serial', linewidths=0.9)
-    cs_g = plt.contour(X, Y, g(X,Y,q[-1]), levels=[0], colors='k', alpha=1, linewidths=0.95, algorithm='serial')
-    # plt.show()
-
-    # collections is deprecated in matplotlib version 3.8, but
-    # I'm running 3.7.5 FIXME
-    new_xs = []
-    new_ys = []
-    count = 1
-    for vertex, code in cs_f.collections[0].get_paths()[0].iter_segments():
-        x,y = (U @ np.append(vertex,p[-1]))[0:-1]
-        if count == 1:
-            plt.scatter(*vertex, c='red')
-            plt.scatter(x,y, c='r')
-            count += 1
-        new_xs.append(x)
-        new_ys.append(y)
-
-    plt.plot(new_xs, new_ys, c='slateblue', linewidth=2)
-
-    # plt.legend()
-    plt.show()
-
-
-
-
     # now (U \cdot f) (q) = f (U^(-1) @ q) = f(p) = 0 and also g (q) = 0, so q is
     # a common zero of the polynomial system F = (U \cdot f, g)
 
@@ -148,7 +103,7 @@ if __name__ == '__main__':
 
     # HARD-CODED, FIXME
     A_1 = logm(V @ U)
-    A_2 = logm(U)
+    A_2 = logm(V)
     A = [A_1, A_2]
 
     # this choice of T might be giving us the needed Lipschitz continuity?
@@ -162,12 +117,97 @@ if __name__ == '__main__':
     # at t = 0, path(t) should equal (id(n), id(n))
     np.allclose(path(0), (np.eye(n), np.eye(n)))
 
-    # at t = T, path(t) should equal (VU, U)
-    np.allclose(path(T), (V@U, U))
+    # at t = T, path(t) should equal (VU, V)
+    np.allclose(path(T), (V@U, V))
 
 
     # next we track the common zero V @ q along this path using a
     # predictor-corrector method
 
     # (a sort of sneaky thing we also need to do is set up the system of DEs)
+
+
+
+
+
+    # an exercise in plotting FIXME
+
+    # TODO
+    # 1. add an axes argument that we can pass to a plotting function
+    # 2. refactor the variety shift bit into its own function (so it can be
+    #    easily reused)
+    # 3. generally improve labeling and ordering and comments
+    # 4. I don't fully understand the fixing z part. In particular, I am
+    #    fixing z = p[-1] for the f variety and z = q[-1] for the g variety.
+    #    But then when I shift the f variety, I set... z = p[-1], which is
+    #    exactly what it's supposed to be... Not sure why I found that confusing,
+    #    but it is the right choice (according to a check of other values), so
+    #    I apparently understood something when I was doing it. (make a comment about this)
+    # 5. Also, the algorithm being used to build the contour plots seems intriguing and
+    #    not even remotely obvious. Working at Matplotlib (or some other similar place)
+    #    would be pretty fun I think. I want to make a comment somewhere about using 'serial'
+    #    for the contour algorithm, since it isn't the default in Matplotlib, which is a
+    #    little silly, especially since it made everything so much better when plotting.
+
+    def plot_shifted_variety(ax, cs, approx_zero, mat, color):
+        # ax is the figure we're plotting in
+        # cs is the object returned by plt.contour
+        # approx_zero is the approximate zero we're working with; the final coordinate
+        # is the fixed value of z we choose when plotting
+        # mat is the matrix we're shifting the variety by
+
+        # collections is deprecated in matplotlib version 3.8, but
+        # I'm running 3.7.5 FIXME
+        new_xs = []
+        new_ys = []
+        # count = 1
+        for vertex, code in cs.collections[0].get_paths()[0].iter_segments():
+            x,y = (mat @ np.append(vertex,approx_zero[-1]))[0:-1]
+#            if count == 1:
+#                plt.scatter(*vertex, c='red')
+#                plt.scatter(x,y, c='r')
+#                count += 1
+            new_xs.append(x)
+            new_ys.append(y)
+
+        plt.plot(new_xs, new_ys, c=color, linewidth=1.5)
+        return
+
+
+    print('Determinant of U: ', np.linalg.det(U))
+
+    step = 1000
+    ran = 2 # FIXME
+    xs = np.linspace(-ran,ran,step)
+    ys = np.linspace(-ran,ran,step)
+    X,Y = np.meshgrid(xs, ys)
+
+    ax = plt.figure()
+    plt.axis('equal')
+#    plt.scatter(*p[0:-1], c='k')
+#    plt.scatter(*q[0:-1], c='k')
+    # make order standard here FIXME
+    cs_f = plt.contour(X, Y, f(X,Y,p[-1]), levels=[0], colors='slateblue', alpha=0.45, algorithm='serial', linewidths=0.9)
+    cs_g = plt.contour(X, Y, g(X,Y,q[-1]), levels=[0], colors='k', alpha=0.45, linewidths=0.9, algorithm='serial')
+
+
+    N = 22
+    colors = iter(cm.rainbow(np.linspace(0, 1, N)))
+    for t in np.linspace(T, 0, N):
+    # for t in np.linspace(T,0,10):
+        A_1, A_2 = path(t)
+        # assert np.allclose(A_1, V@U)
+        # assert np.allclose(A_2, V)
+        color = next(colors)
+        plot_shifted_variety(ax, cs_f, p, A_1, color=color)
+        plot_shifted_variety(ax, cs_g, q, A_2, color=color)
+        if t == T:
+            # plt.scatter(*(A_1@p)[0:-1], c='gold', s=100)
+            # plt.scatter(*(A_2@q)[0:-1], c='k')
+            pass
+
+
+    # plt.legend()
+    plt.show()
+
 
