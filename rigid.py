@@ -2,11 +2,11 @@
 import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import cm
 
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
 from scipy.linalg import logm, expm
+from scipy.optimize import root
 
 
 def build_unitary(p, q):
@@ -33,29 +33,79 @@ def get_path(A, T):
     return w_t
 
 
+def proj_newton(guess, F, jac, tol=1e-8, max_iter=5000):
+    # guess is a guess for where the zero is located
+    # F is the polynomial system
+    # jac is the Jacobian of F (should be n x (n + 1), since F has n
+    # polynomials with (n + 1) variables)
+    # the returned approx. zero will be within tol of the true zero
+    # (if the computation succeeds, anyway)
+
+    n = len(F(guess))
+    give_up = 1e10
+
+    DF_mat = lambda X : np.vstack([jac(X), X.T])
+    assert np.shape(DF_mat(guess)) == (n+1, n+1)
+
+
+    F_mat = lambda X : np.append(np.array([f for f in F(X)]), 0)
+    assert np.shape(F_mat(guess)) == (n+1,)
+
+    next_guess = guess - (np.linalg.inv(DF_mat(guess)) @ F_mat(guess))
+    count = 1
+    err = np.linalg.norm(next_guess - guess)
+    guess = next_guess
+
+    while err > tol and err < give_up and count < max_iter:
+        next_guess = guess - (np.linalg.inv(DF_mat(guess)) @ F_mat(guess))
+        count += 1
+        err = np.linalg.norm(next_guess - guess)
+        guess = next_guess
+
+    if count >= max_iter:
+        raise Exception('Too many iterations.')
+    if err >= give_up:
+        raise Exception('Going to infinity and beyond.')
+
+    return [guess, count]
+
+
+def plot_shifted_variety(ax, cs, approx_zero, mat, color, label=None):
+    # ax is the figure we're plotting in
+    # cs is the object returned by plt.contour
+    # approx_zero is the approximate zero we're working with; the final coordinate
+    # is the fixed value of z we choose when plotting
+    # mat is the matrix we're shifting the variety by
+
+    # collections is deprecated in matplotlib version 3.8, but
+    # I'm running 3.7.5 FIXME
+    new_xs = []
+    new_ys = []
+    # count = 1
+
+    for vertex, code in cs.collections[0].get_paths()[0].iter_segments():
+        x,y = (mat @ np.append(vertex,approx_zero[-1]))[0:-1]
+        new_xs.append(x)
+        new_ys.append(y)
+
+    ax.plot(new_xs, new_ys, c=color, linewidth=1.5, label=label)
+    return
+
+
 if __name__ == '__main__':
     # test (homogeneous) polynomials
-    # HARD CODED derivatives, FIXME
     f = lambda x, y, z: x**2 + y**2 - z**2
-    df_x = lambda x, y, z: 2*x
-    df_y = lambda x, y, z: 2*y
-
-    g = lambda x, y, z : 3*x**8 + y**8 - z**8
-    dg_x = lambda x, y, z: 24*x**7
-    dg_y = lambda x, y, z: 8*y**7
+    g = lambda x, y, z : 3*x**4 + y**4 - z**4
 
     # count number of variables
     n = 3
 
-
-    # zeros of test polynomials (found manually FIXME)
+    # zeros of test polynomials
     s,t = np.random.rand(2)
     p = np.array([s, t, (s**2 + t**2)**(1/2)])       # zero of f
     s,t = np.random.rand(2)
-    q = np.array([s, t, (3*s**8 + t**8)**(1/8)])       # zero of g
+    q = np.array([s, t, (3*s**4 + t**4)**(1/4)])       # zero of g
 
-    # p = [0.89893741, 0.48690801, 1.02233452]
-    # q = [0.70364412, 0.49015276, 0.80907222]
 
     # scaled zeros of test polynomials
     p = p / np.linalg.norm(p)
@@ -89,9 +139,13 @@ if __name__ == '__main__':
     # with an arbitrary unitary matrix
     V = get_random_unitary(n)
 
-
     # now our start system is F = (VU \cdot f, V \cdot g) with common zero
     # V @ q; let's verify this is a common zero
+
+    # (Note that, instead using the inverse, we're taking the conjugate transpose.
+    # Since U,V are unitary, these are equivalent. Also, since U,V are real, we
+    # only need to transpose. Later in the code, when the matrices can become complex,
+    # we'll need to conjugate too.)
     np.isclose(f(*U.T @ V.T @ V @ q), 0)
     np.isclose(g(*V.T @ V @ q), 0)
 
@@ -100,14 +154,12 @@ if __name__ == '__main__':
     # (id(n), id(n)), where id(n) is the n by n identity matrix
 
     # (to do this, we are following section 3.4 in RH part 1)
-
-    # HARD-CODED, FIXME
     A_1 = logm(V @ U)
     A_2 = logm(V)
     A = [A_1, A_2]
 
     # this choice of T might be giving us the needed Lipschitz continuity?
-    T = sqrt( (1/sqrt(2)) * sum([np.linalg.norm(A_j) for A_j in A]) )
+    T = sqrt( (1/sqrt(2)) * sum([np.linalg.norm(A_j)**2 for A_j in A]) )
 
     path = get_path(A, T)
 
@@ -122,92 +174,26 @@ if __name__ == '__main__':
 
 
     # next we track the common zero V @ q along this path using a
-    # predictor-corrector method
+    # projective Newton's method
+    next_zero = V @ q
+    for t in np.linspace(T, 0, 100):
+        W_1, W_2 = path(t)
+        F_t = lambda X : np.array([f(*W_1.T.conj() @ X), g(*W_2.T.conj() @ X)])
 
-    # (a sort of sneaky thing we also need to do is set up the system of DEs)
+        # we build the jacobian for the new poly system F_t for each time t
+        # (note that some elements of this function are hard-coded and specific to
+        # the test functions f and g FIXME)
+        def jac(X):
+            x1,y1,z1 = W_1.T.conj() @ X
+            first_row = np.array([2*x1, 2*y1, -2*z1]) @ W_1.T.conj()
 
+            x2,y2,z2 = W_2.T.conj() @ X
+            second_row = np.array([12*x2**3, 4*y2**3, -4*z2**3]) @ W_2.T.conj()
+            return np.array([first_row, second_row])
 
+        next_zero, _ = proj_newton(next_zero, F_t, jac)
 
-
-
-    # an exercise in plotting FIXME
-
-    # TODO
-    # 1. add an axes argument that we can pass to a plotting function
-    # 2. refactor the variety shift bit into its own function (so it can be
-    #    easily reused)
-    # 3. generally improve labeling and ordering and comments
-    # 4. I don't fully understand the fixing z part. In particular, I am
-    #    fixing z = p[-1] for the f variety and z = q[-1] for the g variety.
-    #    But then when I shift the f variety, I set... z = p[-1], which is
-    #    exactly what it's supposed to be... Not sure why I found that confusing,
-    #    but it is the right choice (according to a check of other values), so
-    #    I apparently understood something when I was doing it. (make a comment about this)
-    # 5. Also, the algorithm being used to build the contour plots seems intriguing and
-    #    not even remotely obvious. Working at Matplotlib (or some other similar place)
-    #    would be pretty fun I think. I want to make a comment somewhere about using 'serial'
-    #    for the contour algorithm, since it isn't the default in Matplotlib, which is a
-    #    little silly, especially since it made everything so much better when plotting.
-
-    def plot_shifted_variety(ax, cs, approx_zero, mat, color):
-        # ax is the figure we're plotting in
-        # cs is the object returned by plt.contour
-        # approx_zero is the approximate zero we're working with; the final coordinate
-        # is the fixed value of z we choose when plotting
-        # mat is the matrix we're shifting the variety by
-
-        # collections is deprecated in matplotlib version 3.8, but
-        # I'm running 3.7.5 FIXME
-        new_xs = []
-        new_ys = []
-        # count = 1
-        for vertex, code in cs.collections[0].get_paths()[0].iter_segments():
-            x,y = (mat @ np.append(vertex,approx_zero[-1]))[0:-1]
-#            if count == 1:
-#                plt.scatter(*vertex, c='red')
-#                plt.scatter(x,y, c='r')
-#                count += 1
-            new_xs.append(x)
-            new_ys.append(y)
-
-        plt.plot(new_xs, new_ys, c=color, linewidth=1.5)
-        return
-
-
-    print('Determinant of U: ', np.linalg.det(U))
-
-    step = 1000
-    ran = 2 # FIXME
-    xs = np.linspace(-ran,ran,step)
-    ys = np.linspace(-ran,ran,step)
-    X,Y = np.meshgrid(xs, ys)
-
-    ax = plt.figure()
-    plt.axis('equal')
-#    plt.scatter(*p[0:-1], c='k')
-#    plt.scatter(*q[0:-1], c='k')
-    # make order standard here FIXME
-    cs_f = plt.contour(X, Y, f(X,Y,p[-1]), levels=[0], colors='slateblue', alpha=0.45, algorithm='serial', linewidths=0.9)
-    cs_g = plt.contour(X, Y, g(X,Y,q[-1]), levels=[0], colors='k', alpha=0.45, linewidths=0.9, algorithm='serial')
-
-
-    N = 22
-    colors = iter(cm.rainbow(np.linspace(0, 1, N)))
-    for t in np.linspace(T, 0, N):
-    # for t in np.linspace(T,0,10):
-        A_1, A_2 = path(t)
-        # assert np.allclose(A_1, V@U)
-        # assert np.allclose(A_2, V)
-        color = next(colors)
-        plot_shifted_variety(ax, cs_f, p, A_1, color=color)
-        plot_shifted_variety(ax, cs_g, q, A_2, color=color)
-        if t == T:
-            # plt.scatter(*(A_1@p)[0:-1], c='gold', s=100)
-            # plt.scatter(*(A_2@q)[0:-1], c='k')
-            pass
-
-
-    # plt.legend()
-    plt.show()
-
+    print('Zero of original system: ', next_zero)
+    print('Evaluating f at this zero: ', f(*next_zero))
+    print('Evaluating g at this zero: ', g(*next_zero))
 
