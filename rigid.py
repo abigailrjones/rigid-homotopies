@@ -1,12 +1,11 @@
-
 import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
 from scipy.linalg import logm, expm
-from scipy.optimize import root
 
 
 def build_unitary(p, q):
@@ -33,7 +32,7 @@ def get_path(A, T):
     return w_t
 
 
-def proj_newton(guess, F, jac, tol=1e-8, max_iter=5000):
+def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     # guess is a guess for where the zero is located
     # F is the polynomial system
     # jac is the Jacobian of F (should be n x (n + 1), since F has n
@@ -70,25 +69,24 @@ def proj_newton(guess, F, jac, tol=1e-8, max_iter=5000):
     return [guess, count]
 
 
-def plot_shifted_variety(ax, cs, approx_zero, mat, color, label=None):
-    # ax is the figure we're plotting in
-    # cs is the object returned by plt.contour
-    # approx_zero is the approximate zero we're working with; the final coordinate
-    # is the fixed value of z we choose when plotting
-    # mat is the matrix we're shifting the variety by
+def plot_shifted_variety(ax, X, Y, fixed_z, mats, color):
+    # we use contour from matplotlib to visualize the shifted varieties
+    # as t moves from T to 0
+    W_1, W_2 = mats
+    xx = X.flatten()
+    yy = Y.flatten()
+    f_vals = []
+    g_vals = []
+    for idx in range(len(xx)):
+        f_vals.append(f(*W_1.T.conj() @ [xx[idx], yy[idx], fixed_z]))
+        g_vals.append(g(*W_2.T.conj() @ [xx[idx], yy[idx], fixed_z]))
 
-    # collections is deprecated in matplotlib version 3.8, but
-    # I'm running 3.7.5 FIXME
-    new_xs = []
-    new_ys = []
-    # count = 1
+    f_vals = np.reshape(f_vals, X.shape)
+    g_vals = np.reshape(g_vals, X.shape)
 
-    for vertex, code in cs.collections[0].get_paths()[0].iter_segments():
-        x,y = (mat @ np.append(vertex,approx_zero[-1]))[0:-1]
-        new_xs.append(x)
-        new_ys.append(y)
+    ax.contour(X, Y, f_vals, levels=[0], colors=[color], algorithm='serial')
+    ax.contour(X, Y, g_vals, levels=[0], colors=[color], algorithm='serial')
 
-    ax.plot(new_xs, new_ys, c=color, linewidth=1.5, label=label)
     return
 
 
@@ -104,7 +102,7 @@ if __name__ == '__main__':
     s,t = np.random.rand(2)
     p = np.array([s, t, (s**2 + t**2)**(1/2)])       # zero of f
     s,t = np.random.rand(2)
-    q = np.array([s, t, (3*s**4 + t**4)**(1/4)])       # zero of g
+    q = np.array([s, t, (3*s**4 + t**4)**(1/4)])     # zero of g
 
 
     # scaled zeros of test polynomials
@@ -150,6 +148,21 @@ if __name__ == '__main__':
     np.isclose(g(*V.T @ V @ q), 0)
 
 
+    # FIXME
+    # I found this example using ``real_search.py" (which performs
+    # exactly the steps from above)
+    # I chose it so that everything stays real; this will let us
+    # actually visualize what's going on in this case
+    p = np.array([0.43070642, 0.56079585, 0.70710678])
+    q = np.array([0.43565655, 0.58172984, 0.68687245])
+    U = np.array([[0.98699345, -0.11835762, 0.10879064],
+                  [0.12318842, 0.99162498, -0.03878815],
+                  [-0.10328865, 0.0516854, 0.99330764]])
+    V = np.array([[0.98003022, -0.19120783, -0.05459244],
+                  [0.1618626, 0.92656294, -0.33953147],
+                  [0.11550441, 0.32391462, 0.93900908]])
+
+
     # now we need to build a path in \mathcal{U} that maps (VU, U) to
     # (id(n), id(n)), where id(n) is the n by n identity matrix
 
@@ -175,8 +188,18 @@ if __name__ == '__main__':
 
     # next we track the common zero V @ q along this path using a
     # projective Newton's method
+
+    # if flag make_plot is True, we want to visualize this process. To do
+    # so, we'll need to store each intermediate zero
+    make_plot = True
+    if make_plot: zeros = []
+
+    # the number of steps we'll take to get from time 0 to time T
+    N = 10
+
     next_zero = V @ q
-    for t in np.linspace(T, 0, 100):
+    times = np.linspace(T, 0, N)
+    for t in times:
         W_1, W_2 = path(t)
         F_t = lambda X : np.array([f(*W_1.T.conj() @ X), g(*W_2.T.conj() @ X)])
 
@@ -184,16 +207,59 @@ if __name__ == '__main__':
         # (note that some elements of this function are hard-coded and specific to
         # the test functions f and g FIXME)
         def jac(X):
-            x1,y1,z1 = W_1.T.conj() @ X
+            x1, y1, z1 = W_1.T.conj() @ X
             first_row = np.array([2*x1, 2*y1, -2*z1]) @ W_1.T.conj()
 
-            x2,y2,z2 = W_2.T.conj() @ X
+            x2, y2, z2 = W_2.T.conj() @ X
             second_row = np.array([12*x2**3, 4*y2**3, -4*z2**3]) @ W_2.T.conj()
             return np.array([first_row, second_row])
 
         next_zero, _ = proj_newton(next_zero, F_t, jac)
+        if make_plot:
+            zeros.append(next_zero)
 
-    print('Zero of original system: ', next_zero)
-    print('Evaluating f at this zero: ', f(*next_zero))
-    print('Evaluating g at this zero: ', g(*next_zero))
+    # the final zero we find (at t = 0) is the common zero of our original system;
+    # let's check this
+    final_zero = next_zero
+    assert np.isclose(f(*final_zero), 0)
+    assert np.isclose(g(*final_zero), 0)
+    print('Zero of original system: ', final_zero)
+
+
+    if make_plot:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.set_aspect('equal')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # these values are specific to the hard-coded example above
+        ax.set_xlim(0,0.8)
+        ax.set_ylim(0,0.8)
+
+        step = 200
+        ran = 2
+        xs = np.linspace(-ran,ran,step)
+        ys = np.linspace(-ran,ran,step)
+        X,Y = np.meshgrid(xs, ys)
+
+        colors = cm.rainbow(np.linspace(0, 1, N))
+        for idx in range(0,N):
+            print(idx)
+            t = times[idx]
+            color = colors[idx]
+            zero = zeros[idx]
+
+            W_1, W_2 = path(t)
+
+            label = None
+            if idx == 0:
+                label = 'Start system'
+            if idx == (N-1):
+                label = 'Original system'
+
+            plot_shifted_variety(ax, X, Y, zero[-1], [W_1, W_2], color)
+            ax.scatter(*zero[0:-1], color=color, s=40, zorder=10, edgecolors='k', label=label)
+
+        plt.legend()
+        plt.show()
 
