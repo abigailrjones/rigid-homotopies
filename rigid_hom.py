@@ -8,15 +8,13 @@ from matplotlib import cm
 from scipy.linalg import logm, expm
 
 
-def build_unitary(p, q):
+def build_unitary(moved_zero, fixed_zero):
     # this process uses the SVD and stems from the solution to the
     # balanced Procrustes problem (see Wikipedia page for more details)
 
-    # we have to mess about with axes here to make the matrix multiplication
-    # work as expected; the reason we don't write p and q in this form from
-    # the beginning is so that evaluating f and g at these points is very
-    # straightforward
-    M = q[:, np.newaxis] @ p[np.newaxis]
+    # we mess about with axes here to make the matrix multiplication
+    # work as expected
+    M = fixed_zero[:, np.newaxis] @ moved_zero[np.newaxis]
 
     u, s, vt = np.linalg.svd(M)
     return u @ vt
@@ -40,20 +38,21 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     # the returned approx. zero will be within tol of the true zero
     # (if the computation succeeds, anyway)
 
+    # n is the number of polynomials in the system F
     n = len(F(guess))
-    give_up = 1e10
 
     DF_mat = lambda X : np.vstack([jac(X), X.T])
     assert np.shape(DF_mat(guess)) == (n+1, n+1)
 
 
-    F_mat = lambda X : np.append(np.array([f for f in F(X)]), 0)
+    F_mat = lambda X : np.append(np.array([func for func in F(X)]), 0)
     assert np.shape(F_mat(guess)) == (n+1,)
 
     next_guess = guess - (np.linalg.inv(DF_mat(guess)) @ F_mat(guess))
-    count = 1
     err = np.linalg.norm(next_guess - guess)
     guess = next_guess
+    count = 1
+    give_up = 1e10
 
     while err > tol and err < give_up and count < max_iter:
         next_guess = guess - (np.linalg.inv(DF_mat(guess)) @ F_mat(guess))
@@ -72,6 +71,9 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
 def plot_shifted_variety(ax, X, Y, fixed_z, mats, color):
     # we use contour from matplotlib to visualize the shifted varieties
     # as t moves from T to 0
+
+    # TODO visualization is currently VERY hard-coded to a specific set of
+    # examples; this function will NOT work with almost all examples
     W_1, W_2 = mats
     xx = X.flatten()
     yy = Y.flatten()
