@@ -3,6 +3,8 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+import sys # FIXME
+
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
 from scipy.linalg import logm, expm
@@ -39,14 +41,14 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     # (if the computation succeeds, anyway)
 
     # n is the number of polynomials in the system F
-    n = len(F(guess))
+    N = len(F(guess))
 
     DF_mat = lambda X : np.vstack([jac(X), X.T])
-    assert np.shape(DF_mat(guess)) == (n+1, n+1)
+    assert np.shape(DF_mat(guess)) == (N+1, N+1)
 
 
     F_mat = lambda X : np.append(np.array([func for func in F(X)]), 0)
-    assert np.shape(F_mat(guess)) == (n+1,)
+    assert np.shape(F_mat(guess)) == (N+1,)
 
     next_guess = guess - (np.linalg.inv(DF_mat(guess)) @ F_mat(guess))
     err = np.linalg.norm(next_guess - guess)
@@ -92,6 +94,145 @@ def plot_shifted_variety(ax, X, Y, fixed_z, mats, color):
     return
 
 
+"""
+Notes to self:
+
+    # FIXME check that F satisfies needed criteria, i.e.,
+        # (1) homogeneous (is there a way to do this? the functions
+        #     are handed in as black box functions, so I don't think
+        #     this is strictly possible?) (there's an implicit assert for this,
+        #     since we check that the shifted zero is still a zero, so sort
+        #     of DONE)
+        # (2) n polynomials in (n+1) variables (DONE)
+        # (3) anything else?
+
+    # FIXME should F be a list of lambda functions? How else
+    # might we store these? And are lambda functions the best way?
+    # (Does python have other ways of writing polynomials?)
+    # - Numpy does have a polynomial class, but it isn't useful for
+    #   multivariable polynomials; lambda functions may be the way,
+    #   so let's just assume that format for now
+
+    # TODO should the fancier sampling algorithm from the paper be used
+    # used to get the initial zeros (Lemma 4.5, z.B)
+
+    # TODO vectorization: it might be possible to vectorize some of these
+                          computations, even with all the vectors of matrices
+                          floating about. If it is possible, it will likely
+                          require some trickiness with axes?
+      - also, logm and expm aren't vectorized; is there anything we can do here?
+
+
+Next steps:
+    # Figure out jac for given example as an input
+    # Run with given example and check against previous result
+    # Generalize building jacobian
+    # Generalize finding initial zeros
+
+"""
+
+
+def main(F, zeros, jac):
+    # F is the system of polynomials we are solving
+    # zeros is a list of initial zeros of each poly in F (not common zeros, just plain old zeros)
+    # jac is jacobian of poly system F
+
+
+    """ INITIAL CHECKS """
+
+    arg_counts = [func.__code__.co_argcount for func in F]
+
+    # check that each func in F has the same number of variables
+    assert np.allclose(arg_counts, arg_counts[0])
+
+    # verify that this number of varialbes is exactly one more
+    # than the number of polynomials in the system
+    N = len(F)
+    num_vars = arg_counts[0]
+    assert num_vars == (N + 1)
+
+
+    """ BUILD START SYSTEM """
+
+    # TODO compute initial zeros, store in list list `zeros' (currently an input)
+
+    # scaling initial zeros to have magnitude one
+    zeros = [zero / np.linalg.norm(zero) for zero in zeros]
+
+    # check that all scaled zeros are still zeros of the original
+    # polynomial system (this is also an implicit check that the original
+    # system is indeed homogeneous, as required)
+    assert np.allclose([F[idx](*zeros[idx]) for idx in range(N)], 0)
+
+    # now we use build_unitary to construct a unitary matrix that maps
+    # each initial zero to the first in the list (i.e., zeros[idx] will
+    # be (almost) the common zero of our start system)
+    A = np.array([build_unitary(zeros[idx], zeros[0]) for idx in range(N)])
+    assert np.allclose([A[idx] @ zeros[idx] for idx in range(N)], zeros[0])
+
+    # to make the start system truly generic, we hit the matrix system A
+    # with an arbitrary unitary matrix
+    V = get_random_unitary(n)
+    A = [V @ A[idx] for idx in range(N)]
+
+    # check that the new polynomial system (A \cdot F) has common zero
+    # V @ zeros[0]
+    np.allclose([F[idx](*A[idx].T.conj() @ V @ zeros[0]) for idx in range(N)], 0)
+
+
+    """ BUILD PATH """
+
+    # now we need to build a path in \mathcal{U} that maps A \cdot F to array
+    # of n by n identity matrices
+
+    # (to do this, we are following section 3.4 in RH part 1)
+    log_A = [logm(A[idx]) for idx in range(N)]
+
+    # this choice of T might be giving us the needed Lipschitz continuity? FIXME
+    T = sqrt( (1/sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
+
+    # build path, which is a function of time that returns a 1xN vector
+    # of (unitary) matrices
+    path = get_path(log_A, T)
+
+    # let's check that this path does what we expect
+
+    # at t = 0, path(t) should equal a 1xN vector of id(n)
+    np.allclose(path(0), [np.eye(n)]*N)
+
+    # at t = T, path(t) should equal a 1xN vector of matrices A
+    np.allclose(path(T), A)
+
+
+    """ TRACK ZERO """
+
+    # next we track the common zero V @ zeros[0] along this path using a
+    # projective Newton's method
+
+    # FIXME we need to figure out how to set num_steps to guarantee convergence to
+    # some precision
+    num_steps = 10
+
+    next_zero = V @ zeros[0]
+    times = np.linspace(T, 0, num_steps)
+    for t in times:
+        W_t = path(t)
+        F_t = lambda X : np.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
+
+        # TODO build jac, which requires some knowledge of, or approximation of,
+        # derivatives of F_t (currently an input, but this is wrong FIXME)
+
+        next_zero, _ = proj_newton(next_zero, F_t, jac)
+
+    # the final zero we find (at t = 0) is the common zero of our original system;
+    # let's check this
+    final_zero = next_zero
+    assert np.allclose([F[idx](*final_zero) for idx in range(N)], 0)
+    print('Zero of original system: ', final_zero)
+
+    return final_zero
+
+
 if __name__ == '__main__':
     # test (homogeneous) polynomials
     f = lambda x, y, z: x**2 + y**2 - z**2
@@ -100,78 +241,19 @@ if __name__ == '__main__':
     # count number of variables
     n = 3
 
-    # zeros of test polynomials
-    s,t = np.random.rand(2)
-    p = np.array([s, t, (s**2 + t**2)**(1/2)])       # zero of f
-    s,t = np.random.rand(2)
-    q = np.array([s, t, (3*s**4 + t**4)**(1/4)])     # zero of g
-
-
-    # scaled zeros of test polynomials
-    p = p / np.linalg.norm(p)
-    q = q / np.linalg.norm(q)
-
-
-    # both zeros should now have magnitude 1,
-    assert np.isclose(np.linalg.norm(p), np.linalg.norm(q))
-
-
-    # both zeros should also still satisfy their respective polynomials
-    # (since both polynomials are homogeneous)
-    assert np.isclose(f(*p), 0)
-    assert np.isclose(g(*q), 0)
-
-
-    # now we use build_unitary to construct a unitary matrix that maps
-    # p to q
-    U = build_unitary(p, q)
-
-
-    # check that unitary matrix does what we expect it to do
-    assert np.allclose(q, U @ p)
-
-
-    # now (U \cdot f) (q) = f (U^(-1) @ q) = f(p) = 0 and also g (q) = 0, so q is
-    # a common zero of the polynomial system F = (U \cdot f, g)
-
-
-    # to make the start system truly generic, we hit this polynomial system
-    # with an arbitrary unitary matrix
-    V = get_random_unitary(n)
+    # TODO TAKE OUT FIXME
+    # first example (real_example_1.png)
+    p = np.array([0.43070642, 0.56079585, 0.70710678])
+    q = np.array([0.43565655, 0.58172984, 0.68687245])
+    U = np.array([[0.98699345, -0.11835762, 0.10879064],
+                  [0.12318842, 0.99162498, -0.03878815],
+                  [-0.10328865, 0.0516854, 0.99330764]])
+    V = np.array([[0.98003022, -0.19120783, -0.05459244],
+                  [0.1618626, 0.92656294, -0.33953147],
+                  [0.11550441, 0.32391462, 0.93900908]])
 
     # now our start system is F = (VU \cdot f, V \cdot g) with common zero
     # V @ q; let's verify this is a common zero
-
-    # (Note that, instead using the inverse, we're taking the conjugate transpose.
-    # Since U,V are unitary, these are equivalent. Also, since U,V are real, we
-    # only need to transpose. Later in the code, when the matrices can become complex,
-    # we'll need to conjugate too.)
-    np.isclose(f(*U.T @ V.T @ V @ q), 0)
-    np.isclose(g(*V.T @ V @ q), 0)
-
-
-    # now we need to build a path in \mathcal{U} that maps (VU, U) to
-    # (id(n), id(n)), where id(n) is the n by n identity matrix
-
-    # (to do this, we are following section 3.4 in RH part 1)
-    A_1 = logm(V @ U)
-    A_2 = logm(V)
-    A = [A_1, A_2]
-
-    # this choice of T might be giving us the needed Lipschitz continuity?
-    T = sqrt( (1/sqrt(2)) * sum([np.linalg.norm(A_j)**2 for A_j in A]) )
-
-    path = get_path(A, T)
-
-
-    # let's check that this path does what we expect
-
-    # at t = 0, path(t) should equal (id(n), id(n))
-    np.allclose(path(0), (np.eye(n), np.eye(n)))
-
-    # at t = T, path(t) should equal (VU, V)
-    np.allclose(path(T), (V@U, V))
-
 
     # next we track the common zero V @ q along this path using a
     # projective Newton's method
@@ -180,9 +262,6 @@ if __name__ == '__main__':
     # so, we'll need to store each intermediate zero
     make_plot = False
     if make_plot: zeros = []
-
-    # the number of steps we'll take to get from time 0 to time T
-    N = 10
 
     next_zero = V @ q
     times = np.linspace(T, 0, N)
