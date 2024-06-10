@@ -3,7 +3,6 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-import sys # FIXME
 
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
@@ -129,13 +128,16 @@ Next steps:
     # Generalize building jacobian
     # Generalize finding initial zeros
 
+Gaps:
+    - build_unitary doesn't return identity matrix when fixed_zero == moved_zero. Why?
+      Is there a nice way of handling this case to reduce cases needed in code?
+
 """
 
 
-def main(F, zeros, jac):
+def main(F, zeros):
     # F is the system of polynomials we are solving
     # zeros is a list of initial zeros of each poly in F (not common zeros, just plain old zeros)
-    # jac is jacobian of poly system F
 
 
     """ INITIAL CHECKS """
@@ -167,12 +169,15 @@ def main(F, zeros, jac):
     # now we use build_unitary to construct a unitary matrix that maps
     # each initial zero to the first in the list (i.e., zeros[idx] will
     # be (almost) the common zero of our start system)
-    A = np.array([build_unitary(zeros[idx], zeros[0]) for idx in range(N)])
+    A = np.array([build_unitary(zeros[idx], zeros[0]) for idx in range(1,N)])
+    # need to add identity matrix at front of A manually FIXME
+    A = np.concatenate((np.array([np.eye(num_vars)]), A))
+
     assert np.allclose([A[idx] @ zeros[idx] for idx in range(N)], zeros[0])
 
     # to make the start system truly generic, we hit the matrix system A
     # with an arbitrary unitary matrix
-    V = get_random_unitary(n)
+    V = get_random_unitary(num_vars)
     A = [V @ A[idx] for idx in range(N)]
 
     # check that the new polynomial system (A \cdot F) has common zero
@@ -197,8 +202,8 @@ def main(F, zeros, jac):
 
     # let's check that this path does what we expect
 
-    # at t = 0, path(t) should equal a 1xN vector of id(n)
-    np.allclose(path(0), [np.eye(n)]*N)
+    # at t = 0, path(t) should equal a 1xN vector of id(num_vars)
+    np.allclose(path(0), [np.eye(num_vars)]*N)
 
     # at t = T, path(t) should equal a 1xN vector of matrices A
     np.allclose(path(T), A)
@@ -222,6 +227,15 @@ def main(F, zeros, jac):
         # TODO build jac, which requires some knowledge of, or approximation of,
         # derivatives of F_t (currently an input, but this is wrong FIXME)
 
+        # temporary, HARD-CODED  FIXME
+        def jac(X):
+            x1, y1, z1 = W_t[1].T.conj() @ X
+            second_row = np.array([2*x1, 2*y1, -2*z1]) @ W_t[1].T.conj()
+
+            x2, y2, z2 = W_t[0].T.conj() @ X
+            first_row = np.array([12*x2**3, 4*y2**3, -4*z2**3]) @ W_t[0].T.conj()
+            return np.array([first_row, second_row])
+
         next_zero, _ = proj_newton(next_zero, F_t, jac)
 
     # the final zero we find (at t = 0) is the common zero of our original system;
@@ -238,95 +252,12 @@ if __name__ == '__main__':
     f = lambda x, y, z: x**2 + y**2 - z**2
     g = lambda x, y, z : 3*x**4 + y**4 - z**4
 
-    # count number of variables
-    n = 3
+    # FIXME
+    # zeros of test polynomials
+    s,t = np.random.rand(2)
+    p = np.array([s, t, (s**2 + t**2)**(1/2)])       # zero of f
+    s,t = np.random.rand(2)
+    q = np.array([s, t, (3*s**4 + t**4)**(1/4)])     # zero of g
 
-    # TODO TAKE OUT FIXME
-    # first example (real_example_1.png)
-    p = np.array([0.43070642, 0.56079585, 0.70710678])
-    q = np.array([0.43565655, 0.58172984, 0.68687245])
-    U = np.array([[0.98699345, -0.11835762, 0.10879064],
-                  [0.12318842, 0.99162498, -0.03878815],
-                  [-0.10328865, 0.0516854, 0.99330764]])
-    V = np.array([[0.98003022, -0.19120783, -0.05459244],
-                  [0.1618626, 0.92656294, -0.33953147],
-                  [0.11550441, 0.32391462, 0.93900908]])
-
-    # now our start system is F = (VU \cdot f, V \cdot g) with common zero
-    # V @ q; let's verify this is a common zero
-
-    # next we track the common zero V @ q along this path using a
-    # projective Newton's method
-
-    # if flag make_plot is True, we want to visualize this process. To do
-    # so, we'll need to store each intermediate zero
-    make_plot = False
-    if make_plot: zeros = []
-
-    next_zero = V @ q
-    times = np.linspace(T, 0, N)
-    for t in times:
-        W_1, W_2 = path(t)
-        F_t = lambda X : np.array([f(*W_1.T.conj() @ X), g(*W_2.T.conj() @ X)])
-
-        # we build the jacobian for the new poly system F_t for each time t
-        # (note that some elements of this function are hard-coded and specific to
-        # the test functions f and g FIXME)
-        def jac(X):
-            x1, y1, z1 = W_1.T.conj() @ X
-            first_row = np.array([2*x1, 2*y1, -2*z1]) @ W_1.T.conj()
-
-            x2, y2, z2 = W_2.T.conj() @ X
-            second_row = np.array([12*x2**3, 4*y2**3, -4*z2**3]) @ W_2.T.conj()
-            return np.array([first_row, second_row])
-
-        next_zero, _ = proj_newton(next_zero, F_t, jac)
-        if make_plot:
-            zeros.append(next_zero)
-
-    # the final zero we find (at t = 0) is the common zero of our original system;
-    # let's check this
-    final_zero = next_zero
-    assert np.isclose(f(*final_zero), 0)
-    assert np.isclose(g(*final_zero), 0)
-    print('Zero of original system: ', final_zero)
-
-
-    if make_plot:
-        fig, ax = plt.subplots(figsize=(8, 8))
-        ax.set_aspect('equal')
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-        # these values are specific to the hard-coded example above
-        ax.set_xlim(-1,1)
-        ax.set_ylim(-1,1)
-
-        step = 200
-        ran = 2
-        xs = np.linspace(-ran,ran,step)
-        ys = np.linspace(-ran,ran,step)
-        X,Y = np.meshgrid(xs, ys)
-
-        colors = cm.rainbow(np.linspace(0, 1, N))
-        for idx in range(0,N):
-            print(idx)
-            t = times[idx]
-            color = colors[idx]
-            zero = zeros[idx]
-
-            W_1, W_2 = path(t)
-
-            label = None
-            if idx == 0:
-                label = 'Start system'
-            if idx == (N-1):
-                label = 'Original system'
-
-            plot_shifted_variety(ax, X, Y, zero[-1], [W_1, W_2], color)
-            ax.scatter(*zero[0:-1], color=color, s=40, zorder=10, edgecolors='k', label=label)
-
-        plt.legend()
-        plt.savefig('images/real_example.png')
-        plt.show()
+    main([g, f], [q, p])
 
