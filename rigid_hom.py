@@ -1,6 +1,9 @@
 import numpy as np
 from matplotlib import cm
+from matplotlib.colors import Normalize
+import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # a package that performs automatic differentiation
 # FIXME version 0.4.17 of jax/jaxlib may be new enough to not have that
@@ -11,6 +14,8 @@ import jax.numpy as jnp
 # need matrix exponentials and matrix logarithms (which are concepts
 # that, according to Wikipedia, lead to Lie theory; intriguing)
 from scipy.linalg import logm, expm
+
+import sys
 
 
 def build_unitary(moved_zero, fixed_zero):
@@ -69,15 +74,15 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
         err = np.linalg.norm(next_guess - guess)
         guess = next_guess
 
-    if count >= max_iter:
+    if count > max_iter:
         raise Exception('Too many iterations.')
-    if err >= give_up:
+    if err > give_up:
         raise Exception('Going to infinity and beyond.')
 
     return [guess, count]
 
 
-def main(F, zeros):
+def main(F, zeros, make_plot=True):
     # F is the system of polynomials we are solving
     # zeros is a list of initial zeros of each poly in F (not common zeros, just plain old zeros) FIXME
 
@@ -119,6 +124,13 @@ def main(F, zeros):
     # to make the start system truly generic, we hit the matrix system A
     # with an arbitrary unitary matrix
     V = get_random_unitary(num_vars)
+    # print('V: ', V)
+    """
+    # example of a V where Newton's method consistently fails at t=0
+    V = np.array([[ 0.9096246,  0.062153,   0.41075527],
+                  [-0.4044156, -0.0936960,  0.90976317],
+                  [-0.0950313,  0.9936588,  0.06009228]])
+    """
     A = [V @ A[idx] for idx in range(N)]
 
     # check that the new polynomial system (A \cdot F) has common zero
@@ -156,9 +168,19 @@ def main(F, zeros):
     # next we track the common zero V @ zeros[0] along this path using a
     # projective Newton's method
 
-    # FIXME we need to figure out how to set num_steps to guarantee convergence to
-    # some precision
-    num_steps = 50
+    # FIXME implement GammaProb
+    num_steps = 20
+
+    if make_plot:
+        fig, ax = plt.subplots(nrows=num_vars+1,ncols=1,
+                               height_ratios=[3]*num_vars + [1])
+        fig.tight_layout()
+        for idx in range(num_vars):
+            ax[idx].yaxis.set_major_locator(ticker.NullLocator())
+            ax[idx].spines[['left', 'right', 'top']].set_visible(False)
+            ax[idx].set_xlabel(r'$x_{}$'.format(idx+1), loc='left')
+            ax[idx].set_ylim(-0.4,1)
+        colors = reversed(cm.rainbow(np.linspace(0,1,num_steps)))
 
     # need to cast to complex type for jax
     # TODO I'm surprised it isn't throwing a fit that it isn't a jnp array?
@@ -166,6 +188,7 @@ def main(F, zeros):
     next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
     times = np.linspace(T, 0, num_steps)
     for t in times:
+        print(t)
         # pick out the path matrix at time t
         W_t = np.array(path(t))
         # a jnp.array of the ``shifted" polynomial system (note that F_t must be
@@ -182,24 +205,67 @@ def main(F, zeros):
 
         next_zero, _ = proj_newton(next_zero, F_t, jac)
 
+        # if last coordinate far from zero, normalize so that it is one
+        if not np.isclose(next_zero[-1], 0):
+            next_zero = next_zero / next_zero[-1]
+
+        if make_plot:
+            color = next(colors)
+            for idx in range(num_vars):
+                coord = next_zero[idx]
+                # if we want to see how many intermediate zeros are nonreal,
+                # write edge=None in next line
+                if not np.isclose(coord.imag, 0): edge='k'
+                else: edge='k'
+                if t == 0:
+                    ax[idx].scatter(coord.real, 0, color='gold', edgecolor='k',
+                                    linewidths=0.5,
+                                    s=500, marker='*')
+                ax[idx].scatter(coord.real, 0, color=color, edgecolor=edge, s=80)
+
+
     # the final zero we find (at t = 0) is the common zero of our original system;
     # let's check this
     final_zero = next_zero
     assert np.allclose([F[idx](*final_zero) for idx in range(N)], 0)
     print('Zero of original system: ', final_zero)
 
+    if make_plot:
+        ax[-1].yaxis.set_major_locator(ticker.NullLocator())
+        ax[-1].spines[['left', 'right', 'top', 'bottom']].set_visible(False)
+        cmap = cm.ScalarMappable(norm=Normalize(0,1), cmap='rainbow')
+        cbar = fig.colorbar(cmap, cax=ax[-1], orientation='horizontal')
+        cbar.set_ticks([0,1])
+        cbar.set_ticklabels([r'$t=0$', r'$t=T$'])
+        fig.suptitle('Real parts of zeros')
+        plt.savefig('scatter_two_circles_visual.png')
+        plt.show()
+
     return final_zero
 
 
 if __name__ == '__main__':
     # test (homogeneous) polynomials
-    f = lambda x, y, z: x**2 + y**2 - z**2
-    g = lambda x, y, z : x + y - z
+    f = lambda x, y, z: x**2 - 2*x*z + y**2
+    g = lambda x, y, z : x**2 + y**2 - z**2
 
-    # FIXME
     # zeros of test polynomials
-    p = np.array([1,1,np.sqrt(2)])
-    q = np.array([1,1,2])
+    p = np.array([1,1,1])
+    q = np.array([1,0,1])
 
     main([g, f], [q, p])
+
+
+    sys.exit()
+
+
+    f = lambda x,y,z,w : x + y + z + w
+    g = lambda x,y,z,w : x**2 + 2*x*y + w*z
+    h = lambda x,y,z,w : x**3 + x*y*w + y*z**2
+
+    p = np.array([1,-1,-1,1])
+    q = np.array([1,0,1,-1])
+    r = np.array([1,-1,0,1])
+
+    main([f,g,h],[p,q,r])
 
