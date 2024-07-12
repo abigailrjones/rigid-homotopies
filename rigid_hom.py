@@ -21,19 +21,20 @@ def build_unitary(moved_zero, fixed_zero):
     return U @ Vt
 
 
-def get_random_unitary(n):
+def build_random_unitary(n):
     U, S, Vt = np.linalg.svd(np.random.rand(n,n))
     return U @ Vt
 
 
-def get_path(A):
+def build_path(A, N):
     # (to build this path, we are following section 3.4 in RH part 1)
     log_A = [logm(A[idx]) for idx in range(N)]
 
     # this choice of T might be giving us the needed Lipschitz continuity? TODO
-    T = np.sqrt( (1/np.sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
+    # T = np.sqrt( (1/np.sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
+    # W_t = lambda t : [expm((t/T) * A_j) for A_j in A]
 
-    W_t = lambda t : [expm((t/T) * A_j) for A_j in A]
+    W_t = lambda t : [expm((t) * A_j) for A_j in A]
     return W_t
 
 
@@ -115,7 +116,7 @@ def main(F, zeros):
 
     # to make the start system truly generic, we hit the matrix system A
     # with an arbitrary unitary matrix
-    V = get_random_unitary(num_vars)
+    V = build_random_unitary(num_vars)
     A = [V @ A[idx] for idx in range(N)]
 
     # check that the new polynomial system (A \cdot F) has common zero
@@ -130,7 +131,7 @@ def main(F, zeros):
 
     # build path, which is a function of time that returns a 1xN vector
     # of (unitary) matrices
-    path = get_path(A)
+    path = build_path(A, N)
 
     # let's check that this path does what we expect
 
@@ -138,8 +139,8 @@ def main(F, zeros):
     # identity matrices
     np.allclose(path(0), [np.eye(num_vars)]*N)
 
-    # at t = T, path(T) should equal the 1xN vector of matrices, A
-    np.allclose(path(T), A)
+    # at t = 1, path(1) should equal the 1xN vector of matrices, A
+    np.allclose(path(1), A)
 
 
     """ TRACK ZERO """
@@ -151,7 +152,7 @@ def main(F, zeros):
     num_steps = 20
 
     next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
-    times = np.linspace(T, 0, num_steps)
+    times = np.linspace(1, 0, num_steps)
     for t in times:
         print(t)
         # pick out the path matrix at time t
