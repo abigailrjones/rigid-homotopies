@@ -1,8 +1,13 @@
 import matplotlib.pyplot as plt
 
 # test (homogeneous) polynomials
+"""
 ff = lambda x, y, z: x**2 + y**2 - z**2
 g = lambda x, y, z: x**2 + y**2 - 4*z**2
+"""
+
+ff = lambda x, y, z: x**2 - 2*x*z + y**2
+g = lambda x, y, z : x**2 + y**2 - z**2
 
 with open('out.txt') as f:
     zeros = [zero.split(' ') for zero in f.read().splitlines()]

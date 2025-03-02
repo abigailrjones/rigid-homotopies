@@ -70,9 +70,9 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
         guess = next_guess
 
     if count > max_iter:
-        raise Exception('Too many iterations.')
+        raise RuntimeError('Too many iterations.')
     if err > give_up:
-        raise Exception('Going to infinity and beyond.')
+        raise ValueError('Going to infinity and beyond.')
 
     return [guess, count]
 
@@ -152,11 +152,13 @@ def main(F, zeros):
     # projective Newton's method
 
     # TODO implement GammaProb, or some other timestepping solution
+    t = 1
     num_steps = 20
-
+    dt = (1/num_steps)
+    max_reverse = 4
     next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
-    times = np.linspace(1, 0, num_steps)
-    for t in times:
+    while (t > 0 and dt > (1/num_steps)*0.5**max_reverse):
+        t -= dt
         # pick out the path matrix at time t
         W_t = np.array(path(t))
 
@@ -168,15 +170,31 @@ def main(F, zeros):
 
         # compute next_zero using projective Newton's method, with previous zero
         # as the initial guess
-        next_zero, _ = proj_newton(next_zero, F_t, jac)
+        try:
+            next_zero, _ = proj_newton(next_zero, F_t, jac)
 
-        # if last coordinate of next_zero is far from zero, normalize so
-        # that it is one
-        if not np.isclose(next_zero[-1], 0):
-            next_zero = next_zero / next_zero[-1]
+        except:
+            # maybe we went too far when we stepped back, so let's reverse to the last time
+            t += dt
+            # and then decrease time step
+            dt *= 0.5
 
-        # FIXME plotting experiment
-        print(*next_zero)
+        else:
+            # if last coordinate of next_zero is far from zero, normalize so
+            # that it is one
+            if not np.isclose(next_zero[-1], 0):
+                next_zero = next_zero / next_zero[-1]
+
+        finally:
+            # FIXME plotting experiment
+            # print(*next_zero)
+            pass
+
+    if dt > (1/num_steps)*0.5**max_reverse:
+        assert np.isclose(t,0.)
+    else:
+        raise RuntimeError("Projective Newton failed to converge.")
+
 
     # the final zero we find (at t = 0) is the common zero of our original system;
     # let's check this
@@ -191,6 +209,7 @@ def main(F, zeros):
 
 
 if __name__ == '__main__':
+    """
     # test (homogeneous) polynomials
     f = lambda x, y, z: x**2 + y**2 - z**2
     g = lambda x, y, z: x**2 + y**2 - 4*z**2
@@ -200,4 +219,14 @@ if __name__ == '__main__':
     q = np.array([np.sqrt(2),np.sqrt(2),1])
 
     main([f,g],[p,q])
+    """
 
+    # test (homogeneous) polynomials
+    f = lambda x, y, z: x**2 - 2*x*z + y**2
+    g = lambda x, y, z : x**2 + y**2 - z**2
+
+    # zeros of test polynomials
+    p = np.array([1,1,1])
+    q = np.array([1,0,1])
+
+    main([g, f], [q, p])
