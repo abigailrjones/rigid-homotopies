@@ -12,7 +12,8 @@ def build_unitary(moved_zero, fixed_zero):
     # this process uses the SVD and stems from the solution to the
     # balanced Procrustes problem (see Wikipedia page for more details)
 
-    # need to handle case when moved_zero == fixed_zero separately FIXME
+    # FIXME we need to handle case when moved_zero == fixed_zero separately,
+    # which isn't very neat
     if np.allclose(moved_zero, fixed_zero):
         return np.eye(len(fixed_zero))
 
@@ -30,10 +31,11 @@ def build_path(A, N):
     # (to build this path, we are following section 3.4 in RH part 1)
     log_A = [logm(A[idx]) for idx in range(N)]
 
-    # this choice of T might be giving us the needed Lipschitz continuity? TODO
+    # TODO this choice of T might be giving us the needed Lipschitz continuity?
     # T = np.sqrt( (1/np.sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
     # W_t = lambda t : [expm((t/T) * A_j) for A_j in A]
 
+    # TODO assuming T=1, which may mess up something down the line? not sure
     W_t = lambda t : [expm((t) * A_j) for A_j in A]
     return W_t
 
@@ -77,8 +79,9 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
 
 def main(F, zeros):
     # F is the system of polynomials we are solving
-    # zeros is a list of initial zeros of each poly in F (not common zeros,
-    # just plain old zeros) FIXME
+    # TODO zeros is a list of initial zeros of each poly in F (not common
+    # zeros, just plain old zeros). eventually, we want the program to build
+    # these initial zeros itself
 
 
     """ INITIAL CHECKS """
@@ -154,7 +157,6 @@ def main(F, zeros):
     next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
     times = np.linspace(1, 0, num_steps)
     for t in times:
-        print(t)
         # pick out the path matrix at time t
         W_t = np.array(path(t))
 
@@ -173,24 +175,29 @@ def main(F, zeros):
         if not np.isclose(next_zero[-1], 0):
             next_zero = next_zero / next_zero[-1]
 
+        # FIXME plotting experiment
+        print(*next_zero)
 
     # the final zero we find (at t = 0) is the common zero of our original system;
     # let's check this
     final_zero = next_zero
     assert np.allclose([F[idx](*final_zero) for idx in range(N)], 0)
-    print('Zero of original system: ', final_zero)
+    # print('Zero of original system: ', final_zero)
+
+    # TODO run Newton's method on this final zero and verify quadratic
+    # convergence as a confidence boost
 
     return final_zero
 
 
 if __name__ == '__main__':
     # test (homogeneous) polynomials
-    f = lambda x, y, z: x**2 - 2*x*z + y**2
-    g = lambda x, y, z : x**2 + y**2 - z**2
+    f = lambda x, y, z: x**2 + y**2 - z**2
+    g = lambda x, y, z: x**2 + y**2 - 4*z**2
 
     # zeros of test polynomials
-    p = np.array([1,1,1])
-    q = np.array([1,0,1])
+    p = np.array([1j,np.sqrt(2),1])
+    q = np.array([np.sqrt(2),np.sqrt(2),1])
 
-    main([g, f], [q, p])
+    main([f,g],[p,q])
 
