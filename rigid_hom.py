@@ -100,7 +100,7 @@ def main(F, zeros):
 
     """ BUILD START SYSTEM """
 
-    # TODO compute initial zeros, store in list list `zeros' (currently an input)
+    # TODO compute initial zeros, store in list `zeros' (currently an input)
 
     # scaling initial zeros to have magnitude one
     zeros = [zero / np.linalg.norm(zero) for zero in zeros]
@@ -114,12 +114,14 @@ def main(F, zeros):
     # each initial zero to the first in the list (i.e., zeros[0] will
     # be (almost) the common zero of our start system)
     A = np.array([build_unitary(zeros[idx], zeros[0]) for idx in range(0,N)])
+    # print(A[1])
     assert np.allclose(A[0], np.eye(num_vars)) # FIXME
     assert np.allclose([A[idx] @ zeros[idx] for idx in range(N)], zeros[0])
 
     # to make the start system truly generic, we hit the matrix system A
     # with an arbitrary unitary matrix
     V = build_random_unitary(num_vars)
+    # print(V)
     A = [V @ A[idx] for idx in range(N)]
 
     # check that the new polynomial system (A \cdot F) has common zero
@@ -153,7 +155,7 @@ def main(F, zeros):
 
     # TODO implement GammaProb, or some other timestepping solution
     t = 1
-    num_steps = 20
+    num_steps = 100
     dt = (1/num_steps)
     max_reverse = 4
     next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
@@ -161,6 +163,7 @@ def main(F, zeros):
         t -= dt
         # pick out the path matrix at time t
         W_t = np.array(path(t))
+         #print(W_t)
 
         # a jnp.array of the ``shifted" polynomial system
         F_t = lambda X : jnp.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
@@ -185,6 +188,10 @@ def main(F, zeros):
             if not np.isclose(next_zero[-1], 0):
                 next_zero = next_zero / next_zero[-1]
 
+            np.allclose([F[idx](*W_t[idx].T.conj() @ next_zero) for idx in range(N)], 0)
+            # print(f"F_t(next_zero) = {F_t(next_zero)}")
+            # print(f"F_t(next_zero) = {[F[idx](*W_t[idx].T.conj() @ next_zero) for idx in range(N)]}")
+
         finally:
             # FIXME plotting experiment
             # print(*next_zero)
@@ -204,6 +211,11 @@ def main(F, zeros):
 
     # TODO run Newton's method on this final zero and verify quadratic
     # convergence as a confidence boost
+    F_final = lambda X : jnp.array([F[idx](*X) for idx in range(N)])
+    jac = jacfwd(F_final, holomorphic=True)
+    for i in range(5):
+        print(*final_zero)
+        final_zero, _ = proj_newton(final_zero, F_final, jac)
 
     return final_zero
 
@@ -215,8 +227,14 @@ if __name__ == '__main__':
     g = lambda x, y, z: x**2 + y**2 - 4*z**2
 
     # zeros of test polynomials
-    p = np.array([1j,np.sqrt(2),1])
-    q = np.array([np.sqrt(2),np.sqrt(2),1])
+    # p = np.array([1j,np.sqrt(2),1])
+    # q = np.array([np.sqrt(2),np.sqrt(2),1])
+    #p = np.array([1,1,np.sqrt(2)])
+    # q = np.array([np.sqrt(2),np.sqrt(2),1])
+    s,t = np.random.rand(2)
+    p = np.array([s,t,(s**2+t**2)**(1/2)])
+    s,t = np.random.rand(2)
+    q = np.array([s,t,0.5*(s**2+t**2)**(1/2)])
 
     main([f,g],[p,q])
     """
