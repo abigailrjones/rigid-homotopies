@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.linalg import logm, expm
+from scipy.special import binom
 
 # a package that performs automatic differentiation
 from jax import jacfwd
@@ -40,6 +41,36 @@ def build_path(A, N):
     return W_t
 
 
+def gamma_prob(f,z,dzf,D,eps):
+    # See Algorithm 2, part II.
+    # f is a single polynomial with n+1 variables and z is a vector with
+    # dimension (1,n+1).
+    # if f is the ith component of F_t, then dzf is the L2 norm of the ith row
+    # of the Jacobian matrix evaluated at z (hence is a number)
+    # FIXME D is an upper bound of the degree of f, should be a factor of 2?
+    N = len(z)-1
+    h = lambda x : f(z + x)
+    s = np.ceil(1 + np.log2(D/eps))
+    roots_unity = np.exp([2*np.pi*1j/(D+1)**j for j in range(D+1)])
+    H_sum = np.zeros(D-1)
+
+    for j in range(1,s):
+        # sample unit ball in C^(n+1) uniformly
+        wj = np.random.uniform(size=N+1)
+        # scale vector wj by individual elements of roots_unity, evaluate h at
+        # the resulting vectors (hence outer product)
+        hj = h(*np.outer(wj,roots_unity))
+        assert np.shape(hj)==(D+1,)
+
+        # TODO this is some gnarly numpy trickery here, we should really write
+        # up what we were thinking when we wrote this
+        H_sum += (np.abs(np.sum(np.vander(1/roots, N=D+1, increasing=True)[:,2:].T @ hj, axis=1)/(D+1)))**2
+
+    fac = [(32*N*k)**k/dzf * binom(N+1+k,k) / s for k in range(2,D+1)]
+    res = fac * H_sum
+    return max([res[idx]**(1/(2*idx+1)) for idx in range(D-1)])
+
+
 def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     # guess is a guess for where the zero is located
     # F is the polynomial system
@@ -77,7 +108,41 @@ def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     return [guess, count]
 
 
-def main(F, zeros):
+def bounded_blackbox_NC(F,path,init_zero,K_max,eps,D):
+    N = len(F)
+    eta = eps/N/K_max
+    g_sum = 0
+    t = 1
+
+    W_t = np.array(path(t))
+    # a jnp.array of the ``shifted" polynomial system
+    F_t = lambda X : jnp.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
+    # use jax (automatic differentiation) to build jacobian
+    jac = jacfwd(F_t, holomorphic=True)
+
+    zero = init_zero
+    for k in range(1,K_max+1):
+        jac_norm = jnp.linalg.norm(jac(zero),axis=1)
+        for i in range(1,N+1):
+            # TODO make this something that happens all at once or break up into entirely for loop loop
+            g_sum += gamma_prob(F_t[i],zero,jac_norm[i],D,eta)**2
+        # using prop I.17 to bound kappa^2
+        t -= 1/(240*6*N**2*np.sqrt(g_sum))
+        if t <= 0:
+            return zero
+        else:
+            W_t = np.array(path(t))
+            F_t = lambda X : jnp.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
+            jac = jacfwd(F_t, holomorphic=True)
+            # compute next_zero using projective Newton's method, with previous zero
+            # as the initial guess
+            zero, _ = proj_newton(zero, F_t, jac)
+
+    raise RuntimeError("Bounded blackbox NC failed to converge in fewer than K_max iterations.")
+
+
+# FIXME handing in max degree?
+def main(F, zeros, max_deg, K_max=100):
     # F is the system of polynomials we are solving
     # TODO zeros is a list of initial zeros of each poly in F (not common
     # zeros, just plain old zeros). eventually, we want the program to build
@@ -153,70 +218,21 @@ def main(F, zeros):
     # next we track the common zero V @ zeros[0] along this path using a
     # projective Newton's method
 
-    # TODO implement GammaProb, or some other timestepping solution
-    t = 1
-    num_steps = 100
-    dt = (1/num_steps)
-    max_reverse = 4
-    next_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
-    while (t > 0 and dt > (1/num_steps)*0.5**max_reverse):
-        t -= dt
-        # pick out the path matrix at time t
-        W_t = np.array(path(t))
-         #print(W_t)
+    # D >= maximum degree of the system, and should be a power of 2
+    init_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
+    eps = 0.5 # FIXME ?
+    D = 2**np.ceil(np.log2(max_deg))
+    final_zero = bounded_blackbox_NC(F,path,init_zero,K_max,eps,D)
 
-        # a jnp.array of the ``shifted" polynomial system
-        F_t = lambda X : jnp.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
+    # if last coordinate of final_zero is far from zero, normalize so
+    # that it is one
+    if not np.isclose(final_zero[-1], 0):
+        final_zero = final_zero / final_zero[-1]
 
-        # use jax (automatic differentiation) to build jacobian
-        jac = jacfwd(F_t, holomorphic=True)
-
-        # compute next_zero using projective Newton's method, with previous zero
-        # as the initial guess
-        try:
-            next_zero, _ = proj_newton(next_zero, F_t, jac)
-
-        except:
-            # maybe we went too far when we stepped back, so let's reverse to the last time
-            t += dt
-            # and then decrease time step
-            dt *= 0.5
-
-        else:
-            # if last coordinate of next_zero is far from zero, normalize so
-            # that it is one
-            if not np.isclose(next_zero[-1], 0):
-                next_zero = next_zero / next_zero[-1]
-
-            np.allclose([F[idx](*W_t[idx].T.conj() @ next_zero) for idx in range(N)], 0)
-            # print(f"F_t(next_zero) = {F_t(next_zero)}")
-            # print(f"F_t(next_zero) = {[F[idx](*W_t[idx].T.conj() @ next_zero) for idx in range(N)]}")
-
-        finally:
-            # FIXME plotting experiment
-            # print(*next_zero)
-            pass
-
-    if dt > (1/num_steps)*0.5**max_reverse:
-        assert np.isclose(t,0.)
-    else:
-        raise RuntimeError("Projective Newton failed to converge.")
-
-
-    # the final zero we find (at t = 0) is the common zero of our original system;
-    # let's check this
-    final_zero = next_zero
     assert np.allclose([F[idx](*final_zero) for idx in range(N)], 0)
     # print('Zero of original system: ', final_zero)
 
-    # TODO run Newton's method on this final zero and verify quadratic
-    # convergence as a confidence boost
-    F_final = lambda X : jnp.array([F[idx](*X) for idx in range(N)])
-    jac = jacfwd(F_final, holomorphic=True)
-    for i in range(5):
-        print(*final_zero)
-        final_zero, _ = proj_newton(final_zero, F_final, jac)
-
+    # TODO post-processing?
     return final_zero
 
 
@@ -247,4 +263,4 @@ if __name__ == '__main__':
     p = np.array([1,1,1])
     q = np.array([1,0,1])
 
-    main([g, f], [q, p])
+    main([g, f], [q, p], max_deg=2)
