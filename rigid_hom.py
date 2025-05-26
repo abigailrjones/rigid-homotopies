@@ -82,6 +82,13 @@ def gamma_prob(F,Z,jac_norm,D,eps):
     return np.max(res,axis=1)
 
 
+def cond_num(jac):
+    # returns condition number, which is inverse of the least singular value of L
+    # uses (15) and process in proof of Corollary 33 in part I.
+    L = np.diag(1/np.linalg.norm(jac,axis=1)) @ jac
+    return 1/np.min(np.linalg.svdvals(L))
+
+
 def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
     # guess is a guess for where the zero is located
     # F is the polynomial system
@@ -136,12 +143,11 @@ def bounded_blackbox_NC(F,path,init_zero,K_max,eps,D):
         if k % 100 == 0: print(f"Iteration {k} at t={t}")
         jac_norm = jnp.linalg.norm(jac(zero),axis=1)**2
         g_sum = jnp.linalg.norm(gamma_prob(F_t,zero,jac_norm,D,eta))
-        # using prop I.17 to bound kappa^2
-        # print(1/(240*6*N**2*g_sum))
-        fac = 1e7
-        t -= 1/(240*6*N**2*g_sum/fac)
+        fac = 1e5
+        kappa = cond_num(jac(zero))
+        t -= 1/(240*kappa**2*g_sum/fac)
         if k == 1:
-            if (240*6*N**2*g_sum/fac) > K_max:
+            if (240*kappa**2*g_sum/fac) > K_max:
                 raise RuntimeError(f"K_max ({K_max}) is probably too small given the initial step size ({1/(240*6*N**2*g_sum/fac)})")
         if t <= 0:
             F_t = lambda X : jnp.array([F[idx](*X) for idx in range(N)])
