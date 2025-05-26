@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.linalg import logm, expm
-from scipy.special import binom
+from scipy.special import binom, gammainc
 
 # a package that performs automatic differentiation
 from jax import jacfwd
@@ -33,42 +33,53 @@ def build_path(A, N):
     log_A = [logm(A[idx]) for idx in range(N)]
 
     # TODO this choice of T might be giving us the needed Lipschitz continuity?
-    # T = np.sqrt( (1/np.sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
-    # W_t = lambda t : [expm((t/T) * A_j) for A_j in A]
+    T = np.sqrt( (1/np.sqrt(2)) * sum([np.linalg.norm(A[idx])**2 for idx in range(N)]))
+    W_t = lambda t : [expm((t/T) * A_j) for A_j in A]
 
     # TODO assuming T=1, which may mess up something down the line? not sure
-    W_t = lambda t : [expm((t) * A_j) for A_j in A]
+    # W_t = lambda t : [expm((t) * A_j) for A_j in A]
     return W_t
 
 
-def gamma_prob(f,z,dzf,D,eps):
+# from Daniel's answer on
+# https://stackoverflow.com/questions/5408276/sampling-uniformly-distributed-random-points-inside-a-spherical-volume
+def sample(center,radius,n_per_sphere):
+    r = radius
+    ndim = center.size
+    x = np.random.normal(size=(n_per_sphere, ndim))
+    ssq = np.sum(x**2,axis=1)
+    fr = r*gammainc(ndim/2,ssq/2)**(1/ndim)/np.sqrt(ssq)
+    frtiled = np.tile(fr.reshape(n_per_sphere,1),(1,ndim))
+    p = center + np.multiply(x,frtiled)
+    return p
+
+
+def gamma_prob(F,Z,jac_norm,D,eps):
     # See Algorithm 2, part II.
-    # f is a single polynomial with n+1 variables and z is a vector with
-    # dimension (1,n+1).
-    # if f is the ith component of F_t, then dzf is the L2 norm of the ith row
-    # of the Jacobian matrix evaluated at z (hence is a number)
-    # FIXME D is an upper bound of the degree of f, should be a factor of 2?
-    N = len(z)-1
-    h = lambda x : f(z + x)
-    s = np.ceil(1 + np.log2(D/eps))
+    # F is a system of N polynomials, where each polynomial has N+1 variables
+    # z is a vector with dimension (1,N+1).
+    # jac_norm is the row-wise L2 norm of the Jacobian matrix of F evaluated at z
+    # D is an upper bound of the degree of f, should be a factor of 2?
+    N = np.shape(jac_norm)[0]
+    H = lambda X : F(Z + X)
+    s = int(np.ceil(1 + np.log2(D/eps)))
     roots_unity = np.exp([2*np.pi*1j/(D+1)**j for j in range(D+1)])
-    H_sum = np.zeros(D-1)
+    H_sum = np.zeros((D-1,N))
+    # sample unit ball in C^(N+1) uniformly
+    W = sample(np.zeros(N+1),1,s)
 
     for j in range(1,s):
-        # sample unit ball in C^(n+1) uniformly
-        wj = np.random.uniform(size=N+1)
-        # scale vector wj by individual elements of roots_unity, evaluate h at
-        # the resulting vectors (hence outer product)
-        hj = h(*np.outer(wj,roots_unity))
-        assert np.shape(hj)==(D+1,)
+        wj = W[j]
+        Hj = np.asarray([H(zeta*wj) for zeta in roots_unity])
+        assert np.shape(Hj)==(D+1,N)
 
-        # TODO this is some gnarly numpy trickery here, we should really write
-        # up what we were thinking when we wrote this
-        H_sum += (np.abs(np.sum(np.vander(1/roots, N=D+1, increasing=True)[:,2:].T @ hj, axis=1)/(D+1)))**2
+        H_sum += np.abs(np.vander(1/roots_unity,N=D+1,increasing=True)[:,2:].T @ Hj)**2
 
-    fac = [(32*N*k)**k/dzf * binom(N+1+k,k) / s for k in range(2,D+1)]
-    res = fac * H_sum
-    return max([res[idx]**(1/(2*idx+1)) for idx in range(D-1)])
+    fac = [(32*N*k)**k * binom(N+1+k,k) / s for k in range(2,D+1)]
+    res = (fac * np.array(H_sum * jac_norm).T)**[1/(2*k-2) for k in range(2,D+1)]
+    assert np.shape(res)==(N,D-1)
+
+    return np.max(res,axis=1)
 
 
 def proj_newton(guess, F, jac, tol=1e-10, max_iter=5000):
@@ -122,14 +133,21 @@ def bounded_blackbox_NC(F,path,init_zero,K_max,eps,D):
 
     zero = init_zero
     for k in range(1,K_max+1):
-        jac_norm = jnp.linalg.norm(jac(zero),axis=1)
-        for i in range(1,N+1):
-            # TODO make this something that happens all at once or break up into entirely for loop loop
-            g_sum += gamma_prob(F_t[i],zero,jac_norm[i],D,eta)**2
+        if k % 100 == 0: print(f"Iteration {k} at t={t}")
+        jac_norm = jnp.linalg.norm(jac(zero),axis=1)**2
+        g_sum = jnp.linalg.norm(gamma_prob(F_t,zero,jac_norm,D,eta))
         # using prop I.17 to bound kappa^2
-        t -= 1/(240*6*N**2*np.sqrt(g_sum))
+        # print(1/(240*6*N**2*g_sum))
+        fac = 1e7
+        t -= 1/(240*6*N**2*g_sum/fac)
+        if k == 1:
+            if (240*6*N**2*g_sum/fac) > K_max:
+                raise RuntimeError(f"K_max ({K_max}) is probably too small given the initial step size ({1/(240*6*N**2*g_sum/fac)})")
         if t <= 0:
-            return zero
+            F_t = lambda X : jnp.array([F[idx](*X) for idx in range(N)])
+            jac = jacfwd(F_t, holomorphic=True)
+            final_zero, _ = proj_newton(zero, F_t, jac)
+            return final_zero, k
         else:
             W_t = np.array(path(t))
             F_t = lambda X : jnp.array([F[idx](*W_t[idx].T.conj() @ X) for idx in range(N)])
@@ -138,7 +156,7 @@ def bounded_blackbox_NC(F,path,init_zero,K_max,eps,D):
             # as the initial guess
             zero, _ = proj_newton(zero, F_t, jac)
 
-    raise RuntimeError("Bounded blackbox NC failed to converge in fewer than K_max iterations.")
+    raise RuntimeError(f"Bounded blackbox NC failed to converge in fewer than K_max ({K_max}) iterations.")
 
 
 # FIXME handing in max degree?
@@ -218,11 +236,11 @@ def main(F, zeros, max_deg, K_max=100):
     # next we track the common zero V @ zeros[0] along this path using a
     # projective Newton's method
 
-    # D >= maximum degree of the system, and should be a power of 2
+    # D >= maximum degree of the system, and should be a power of 2 if we want to use FFT at some point
     init_zero = np.reshape((V @ zeros[0]).astype(complex), (num_vars,))
-    eps = 0.5 # FIXME ?
-    D = 2**np.ceil(np.log2(max_deg))
-    final_zero = bounded_blackbox_NC(F,path,init_zero,K_max,eps,D)
+    eps = 0.1 # FIXME ?
+    D = int(2**np.ceil(np.log2(max_deg)))
+    final_zero, num_iter = bounded_blackbox_NC(F,path,init_zero,K_max,eps,D)
 
     # if last coordinate of final_zero is far from zero, normalize so
     # that it is one
@@ -233,7 +251,7 @@ def main(F, zeros, max_deg, K_max=100):
     # print('Zero of original system: ', final_zero)
 
     # TODO post-processing?
-    return final_zero
+    return final_zero, num_iter
 
 
 if __name__ == '__main__':
@@ -263,4 +281,6 @@ if __name__ == '__main__':
     p = np.array([1,1,1])
     q = np.array([1,0,1])
 
-    main([g, f], [q, p], max_deg=2)
+    final_zero, num_iter = main([g, f], [q, p], max_deg=2, K_max=1000)
+    print(f"Final zero: {final_zero}")
+    print(f"Converged in {num_iter} iterations")
