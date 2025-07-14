@@ -1,5 +1,6 @@
 import mpmath as mp
 
+
 def scale(zero):
     return zero / mp.norm(zero)
 
@@ -9,8 +10,6 @@ def mean(vals):
 
 
 def compute_shifted_system(F, W_t, num_funcs):
-    # return [lambda *args: F[idx](*W_t[idx].conjugate().T @ mp.matrix(args))
-            #for idx in range(num_funcs)]
     return [_shift(F[idx], W_t[idx]) for idx in range(num_funcs)]
 
 
@@ -18,10 +17,7 @@ def _shift(func, mat):
     return lambda *args: func(*mat.conjugate().T @ mp.matrix(args))
 
 
-# used in build_unitary
 def allclose(arr1, arr2):
-    # TODO add a case where arr2 is a scalar
-
     if (arr1.rows != arr2.rows) or (arr1.cols != arr2.cols):
         raise ValueError("Arrays have conflicting dimensions.")
 
@@ -54,8 +50,6 @@ def build_jacobian(F, num_funcs, num_vars, projective=False):
 
 
 def _partial(func, var_idx, num_vars):
-    # calling mp.diff is handled in a separate function so that mp.diff doesn't
-    # get cranky about partial_wrt changing while running build_jacobian
     partial_wrt = [0 if i != var_idx else 1 for i in range(num_vars)]
     return lambda X: mp.diff(func, X, partial_wrt)
 
@@ -88,7 +82,7 @@ def print_input(t, dt, projective):
 def print_output(F, final_zero, num_iter, avg_step_size):
     print(f"Converged in {num_iter} iterations")
     print(f"Average timestep: {avg_step_size}\n")
-    print(f"Final zero:\n{mp.nstr(final_zero, 10)}\n")
+    print(f"Final zero:\n{mp.nstr(mp.chop(final_zero), 10)}\n")
     print(f"System residuals:\n{mp.nstr(eval_sys(F, final_zero), 10)}")
 
     return

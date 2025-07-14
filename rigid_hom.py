@@ -1,6 +1,7 @@
 import mpmath as mp
 import utils
 
+
 def build_unitary(moved_zero, fixed_zero):
     # FIXME handle identity case more smoothly
     if utils.allclose(moved_zero, fixed_zero):
@@ -28,8 +29,7 @@ def build_path(A, num_funcs):
     return W_t
 
 
-def proj_newton(guess, F_t, num_funcs, num_vars, projective=True, tol=1e-12,
-                max_iter=1000):
+def newton(guess, F_t, num_funcs, num_vars, projective=True, max_iter=1000):
     jac = utils.build_jacobian(F_t, num_funcs, num_vars, projective)
 
     if projective:
@@ -38,10 +38,10 @@ def proj_newton(guess, F_t, num_funcs, num_vars, projective=True, tol=1e-12,
     else:
         compute_inverse = utils.pseudoinverse
 
-    err = tol+1
+    err = mp.mpf('1.')
     give_up = 1e10
     num_iter = 0
-    while err > tol and err < give_up and num_iter < max_iter:
+    while not mp.almosteq(err, mp.mpf('0.')) and err < give_up and num_iter < max_iter:
         next_guess = guess - (compute_inverse(jac(guess)) @ utils.eval_sys(F_t, guess))
         err = mp.norm(next_guess - guess)
         guess = next_guess
@@ -57,7 +57,7 @@ def proj_newton(guess, F_t, num_funcs, num_vars, projective=True, tol=1e-12,
 
 def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=True):
     t = mp.mpf('1.')
-    dt = mp.mpf('0.5')
+    dt = mp.mpf('1.')
     step_sizes = list()
 
     W_t = path(t)
@@ -68,15 +68,16 @@ def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=Tru
     zero = init_zero
     for itr in range(1,max_iter+1):
         if mp.almosteq(t, mp.mpf('0.')):
-            num_refine = 1
+            num_refine = 3
             for _ in range(num_refine):
-                F_t = utils.compute_shifted_system(F, path(mp.mpf('0.')), num_funcs)
-                final_zero, _ = proj_newton(zero, F_t.copy(), num_funcs,
-                                            num_vars, projective=projective)
-                assert utils.allclose(utils.eval_sys(F_t, final_zero),
+                zero, _ = newton(zero, F.copy(), num_funcs, num_vars,
+                                 projective=projective)
+                assert utils.allclose(utils.eval_sys(F_t, zero),
                                       mp.zeros(num_funcs,1))
 
-            return utils.scale(final_zero), itr, utils.mean(step_sizes)
+            # TODO how to scale to get a ``unique" representative?
+            # return utils.scale(zero), itr, utils.mean(step_sizes)
+            return zero / zero[0], itr, utils.mean(step_sizes)
 
         else:
             t -= dt
@@ -88,8 +89,8 @@ def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=Tru
             W_t = path(t)
             F_t = utils.compute_shifted_system(F, W_t, num_funcs)
             try:
-                zero, _ = proj_newton(zero, F_t, num_funcs, num_vars,
-                                      projective=projective)
+                zero, _ = newton(zero, F_t, num_funcs, num_vars,
+                                 projective=projective)
             except RuntimeError:
                 t += dt
                 dt *= 0.5
@@ -100,7 +101,6 @@ def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=Tru
 
 
 def main(F, zeros, max_iter=1000, projective=True):
-    # F is the system of polynomials we are solving
     # TODO zeros is a list of initial zeros of each poly in F (not common
     # zeros, just plain old zeros). eventually, we want the program to build
     # these initial zeros itself
