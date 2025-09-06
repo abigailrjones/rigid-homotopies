@@ -80,8 +80,8 @@ def print_input(t, dt, projective):
 
 
 def print_output(F, final_zero, num_iter, avg_step_size):
-    print(f"Converged in {num_iter} iterations")
-    print(f"Average timestep: {avg_step_size}\n")
+    print(f"Converged in {num_iter} iteration(s)")
+    print(f"Average timestep: {mp.nstr(avg_step_size, 10)}\n")
     print(f"Final zero:\n{mp.nstr(mp.chop(final_zero), 10)}\n")
     print(f"System residuals:\n{mp.nstr(eval_sys(F, final_zero), 10)}")
 

@@ -52,12 +52,14 @@ def newton(guess, F_t, num_funcs, num_vars, projective=True, max_iter=1000):
     if err > give_up:
         raise RuntimeError('Going to infinity and beyond.')
 
+    # FIXME
+    # print(f"Number of Newton iterations: {num_iter}")
     return guess, num_iter
 
 
 def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=True):
     t = mp.mpf('1.')
-    dt = mp.mpf('1.')
+    dt = mp.mpf('.1')
     step_sizes = list()
 
     W_t = path(t)
@@ -68,16 +70,21 @@ def track_path(F, path, init_zero, num_funcs, num_vars, max_iter, projective=Tru
     zero = init_zero
     for itr in range(1,max_iter+1):
         if mp.almosteq(t, mp.mpf('0.')):
-            num_refine = 3
+            # FIXME
+            num_refine = 1
             for _ in range(num_refine):
                 zero, _ = newton(zero, F.copy(), num_funcs, num_vars,
                                  projective=projective)
-                assert utils.allclose(utils.eval_sys(F_t, zero),
-                                      mp.zeros(num_funcs,1))
 
-            # TODO how to scale to get a ``unique" representative?
+            assert utils.allclose(utils.eval_sys(F, zero),
+                                  mp.zeros(num_funcs,1))
+            # TODO how to scale to get a ``unique" representative? (also need
+            # to use same choice in else statement below; recall example where
+            # Newton was basically trying to return (0,0,0), but without
+            # exactly equalling zero, and scaling it made it no longer a
+            # solution), maybe make above assert for scaled version of zero
             # return utils.scale(zero), itr, utils.mean(step_sizes)
-            return zero / zero[0], itr, utils.mean(step_sizes)
+            return zero / zero[0], itr-1, utils.mean(step_sizes)
 
         else:
             t -= dt
@@ -119,7 +126,9 @@ def main(F, zeros, max_iter=1000, projective=True):
 
     # verify that this number of variables is exactly one more
     # than the number of polynomials in the system
-    num_vars = arg_counts[0]
+    # FIXME
+    # num_vars = arg_counts[0]
+    num_vars = len(zeros[0])
     assert (num_vars == num_funcs + 1)
 
 
@@ -143,6 +152,7 @@ def main(F, zeros, max_iter=1000, projective=True):
 
     # to make the start system truly generic, we hit the matrix system A
     # with an arbitrary unitary matrix
+    # TODO options to fix randomness?
     V = build_random_unitary(num_vars)
     # V = mp.eye(num_vars)
     A = [V @ A[idx] for idx in range(num_funcs)]
@@ -189,7 +199,8 @@ if __name__ == '__main__':
     mp.mp.dps = 40
 
     # test (homogeneous) polynomials
-    f = lambda x, y, z: x**2 - 2*x*z + y**2
+    # f = lambda x, y, z: x**2 - 2*x*z + y**2
+    f = lambda x, y, z: x**5 - 2*z*x**4 + y**5
     g = lambda x, y, z: x**2 + y**2 - z**2
 
     # sys.exit()
