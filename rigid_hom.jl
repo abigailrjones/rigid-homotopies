@@ -1,54 +1,76 @@
-
-# FIXME I'm really not sure how Julia handles overlapping ``using" and
-# ``include" in files
 using Zygote: jacobian
+using LinearAlgebra
 
-# TODO incorporate paper implementation with heuristics
+# TODO incorporate paper implementation for sampler
 # include("start_system.jl")
-# include("choose_timestep.jl")
+include("choose_timestep.jl")
 
-# all functions that are passed in must take in the same number of variables
+# all functions are passed in with a vector input; the maximum number of
+# variables is stored in num_vars, but this is not necessarily the number of
+# vars in each function
 # max_degree is the highest degree term that appears in the entire system
 # we assume that all functions passed in F are holomorphic (really I'm assuming
 # polynomial, but I don't think the code currently requires anything beyond
 # holomorphic)
-# FIXME does anything require square? (Newton?)
+# in order to set up the start system, we also require that all polynomials in
+# the system be homogeneous
+#
 # FIXME do num_funcs and num_vars need to be passed in?
 # TODO write a little about:
 # - complex differentation
-# - isapprox definition and choices for atol and rtol
+# - isapprox definition and choices for atol and rtol (using only atol since
+#   we're near zero, but needing to set TOL to be slightly higher than machine
+#   precision in order to make things work out nicely)
 # - make sure to append ! to function names that edit inputs
+# - add options for predictor-corrector
+# - comparing heuristic and paper with same inputs
 
-function main(F::Vector{Function}, num_funcs::Int,num_vars::Int,
-              max_degree::Int, init_roots=Nothing)
-    start_system, start_root= build_start_system(init_roots, num_vars)
+# FIXME making this a global variable is perhaps a bit lazy/hacky?
+TOL = eps()*100
+
+function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
+              max_degree::Int, max_iter::Int, use_heuristic::Bool, start_system,
+              start_root)
     check_build_start_system(F, start_system, start_root, num_funcs)
 
-    path = build_path()
-    check_path(path, start_system, num_vars)
-
-    # TODO add options for Newton (predictor-corrector), timestepper
-    final_root, num_iter, avg_step_size = track_path_heuristic(F, path,
-                                                               start_root,
-                                                               max_iter,
-                                                               num_funcs,
-                                                               num_vars)
-    # FIXME
-    # check_track_path(F, final_root)
-
-    print_output(F, final_root, num_iter, avg_step_size)
-    return final_root, num_iter, avg_step_size
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root)
 end
 
-# TODO add a method that just tracks a system along a given path (does this
-# need its own wrapper?)
-
-# TODO overload this function (one calls paper implementation, other calls heuristic)
-# (I'm not sure which declaration would trigger if Nothing is passed)
-function build_start_system(init_roots, num_vars)
-    if init_roots == Nothing
-        @assert false
+function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
+               max_degree::Int, max_iter::Int, use_heuristic::Bool, init_roots)
+    for idx in 1:num_funcs
+        @assert isapprox(F[idx](init_roots[idx]), 0.0, atol=TOL)
     end
+    start_system, start_root = build_start_system(init_roots, num_vars)
+    check_build_start_system(F, start_system, start_root, num_funcs)
+
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root)
+end
+
+# TODO will call paper sampler
+function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
+               max_degree::Int, max_iter::Int, use_heuristic::Bool)
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root)
+end
+
+function rigid_hom(F::Vector{Function}, num_funcs::Int, num_vars::Int,
+              max_degree::Int, max_iter::Int, use_heuristic::Bool, start_system,
+              start_root)
+    path = build_path(start_system)
+    check_build_path(path, start_system, num_vars)
+
+    final_root, num_steps, avg_step_size, avg_newton_iters =
+    track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_vars, use_heuristic)
+    check_track_path(F, final_root)
+
+    print_output(F, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
+    return final_root, num_steps, avg_step_size
+end
+
+function build_start_system(init_roots, num_vars)
     V = build_random_unitary(num_vars)
     start_root = V * (init_roots[1] / sum(abs.(init_roots[1]).^2))
     start_system = [V]
@@ -68,22 +90,22 @@ function check_build_start_system(F, start_system, start_root, num_funcs)
     for idx in 1:num_funcs
         f = F[idx]
         U = start_system[idx]
-        @assert isapprox(f(U' * start_root), 0.0, atol=eps())
+        @assert isapprox(f(U' * start_root), 0.0, atol=TOL)
     end
     return
 end
 
 function build_random_unitary(num_vars)
-    U, S, Vh = svd(rand(num_vars,num_vars) + im*rand(num_vars,num_vars))
-    return U * Vh
+    U, S, V = svd(rand(num_vars,num_vars) + im*rand(num_vars,num_vars))
+    return U * V'
 end
 
 function build_unitary(moved_root, fixed_root, num_vars)
-    if isapprox(moved_root, fixed_root, atol=eps())
+    if isapprox(moved_root, fixed_root, atol=TOL)
         return Matrix(1.0*I,num_vars,num_vars)
     end
-    U, S, Vh = svd(fixed_root * moved_root')
-    return U * Vh
+    U, S, V = svd(fixed_root * moved_root')
+    return U * V'
 end
 
 function build_path(start_system)
@@ -96,60 +118,106 @@ function check_build_path(path, start_system, num_vars)
     W_0 = path(0.0)
     W_1 = path(1.0)
     for idx in 1:length(W_0)
-        @assert isapprox(W_0[idx]-I, zeros(num_vars,num_vars), atol=eps())
-        @assert isapprox(W_1[idx]-start_system[idx], zeros(num_vars,num_vars), atol=eps())
+        @assert isapprox(W_0[idx]-I, zeros(num_vars,num_vars), atol=TOL)
+        @assert isapprox(W_1[idx]-start_system[idx], zeros(num_vars,num_vars), atol=TOL)
     end
     return
 end
 
-# TODO (is there a neater way of having both a paper and a heuristic implementation?)
-function track_path_paper()
-end
-
-function track_path_heuristic(F, path, start_root, max_iter, num_funcs, num_vars)
+function track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_vars, use_heuristic=true)
     t = 1.0
-    dt = 1.0
+    # TODO passing in initial step for heuristic?
+    dt = use_heuristic ? 1.0 : choose_timestep(F, path(t), start_root, max_degree,
+                                               max_iter, num_funcs, num_vars)
+    num_iter = 0.0
     step_sizes = []
+    newton_iter = []
+
     root = start_root
     for iter in 1:max_iter
-        if isapprox(t, 0.0, atol=eps())
-            final_root, _ = newton()
-            return choose_unique_rep(final_root), iter-1, sum(step_sizes)/length(step_sizes)
+        if isapprox(t, 0.0, atol=TOL)
+            final_root, _ = newton!(root, X -> [F[idx](X) for idx in 1:num_funcs])
+            return choose_unique_rep(final_root), iter-1,
+                   sum(step_sizes)/length(step_sizes),
+                   sum(newton_iter)/length(newton_iter)
         else
             t -= dt
+            if iter % (max_iter // 100) == 0
+                println("Iteration $iter at time t=$t, dt=$dt")
+                println("Previous time at t=$(t+dt)")
+            end
             W_t = path(t)
             F_t = X -> [F[idx](W_t[idx]' * X) for idx in 1:num_funcs]
             try
-                root, _ = newton()
-            catch
-                t += dt
-                dt *= 0.5
+                root, num_iter = newton!(root, F_t)
+            catch e
+                if use_heuristic
+                    if isa(e, ErrorException)
+                        println(e)
+                        t += dt
+                        dt *= 0.5
+                    else
+                        println("A different error occurred: $e.")
+                        throw(e)
+                    end
+                else
+                    println("Using the proven timestep, Newton's method failed with error $e.")
+                    throw(e)
+                end
             else
                 push!(step_sizes, dt)
-                # TODO make sure that this is the same root that we are working with throughout
-                # (i.e., that we're not just forgetting it every time we exit a block)
+                push!(newton_iter, num_iter)
                 root = choose_unique_rep(root)
+                if !use_heuristic
+                    dt = choose_timestep(F, path(t), start_root, max_degree,
+                                         max_iter, num_funcs, num_vars)
+                end
             end
         end
     end
-    throw(ErrorException, "Failed to converge in fewer than $max_iter iterations.")
+    throw(ErrorException("Failed to converge in fewer than $max_iter iterations."))
 end
 
-# TODO
-function newton(guess, F_t)
-    # TODO TODO TODO START HERE
-    # TODO could we make this a function?
-    jac = jacobian(X -> real(F_t(X)), guess)[1] |> conj
-    # pinv in Julia is pseudoinverse
+function newton!(guess, F_t, max_iter=1000)
+    jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
+    err = 1.0
+    give_up = 1e10
+    num_iter = 0
+    while !isapprox(err, 0.0, atol=TOL) & (err < give_up) & (num_iter < max_iter)
+        next_guess = guess - jac_pinv(guess) * F_t(guess)
+        err = norm(next_guess - guess)
+        #=
+        println("Iteration $num_iter: guess=$(round.(guess; digits=3)), next
+                guess=$(round.(next_guess; digits=3))")
+        =#
+        guess = next_guess
+        num_iter += 1
+    end
+
+    if num_iter > max_iter
+        throw(ErrorException("Newton's method failed to converge within $max_iter iterations."))
+    end
+
+    if err > give_up
+        throw(ErrorException("Newton's method is going to infinity."))
+    end
+
+    return guess, num_iter
 end
 
-# TODO
+# FIXME this isn't unique
 function choose_unique_rep(x)
+    # return x / norm(x)
     return x
 end
 
 function check_track_path(F, final_root)
-    @assert isapprox([func(final_root) for func in F], zeros(num_vars,), atol=eps())
+    @assert isapprox([func(final_root) for func in F], zeros(num_funcs,), atol=TOL)
+    #=
+    if !isapprox([func(final_root) for func in F], zeros(num_funcs,), atol=TOL)
+        println("$([func(final_root) for func in F])")
+    end
+    =#
     return
 end
 
@@ -157,10 +225,14 @@ end
 function print_input()
 end
 
-function print_output(F, final_root, num_iter, avg_step_size)
-    println("Converged in $num_iter iteration(s)")
+function print_output(F, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
+    println("")
+    println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
+    println("Converged in $num_steps step(s)")
     println("Average timestep: $avg_step_size")
-    println("Final root: $final_root")
-    println("System residuals: $([func(final_root) for func in F])")
+    println("Averge number of Newton iterations per step: $avg_newton_iters")
+    println("")
+    println("Final root: $(round.(final_root; digits=8))")
+    println("System residuals: $([round.(func(final_root); digits=8) for func in F])")
     return
 end
