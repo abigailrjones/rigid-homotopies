@@ -12,4 +12,5 @@ use_heuristic = true
 
 init_roots = [[1,1,1],[1,0,1]]
 
-solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic, init_roots)
+# solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic, init_roots)
+solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic)

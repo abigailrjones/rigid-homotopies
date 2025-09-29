@@ -19,7 +19,7 @@ using FFTW: fft
 
 # Note to self: verified real version via plotting
 function sample_unit_ball(dim::Integer, num_pts::Integer)
-    x = randn(Float64,(num_pts,dim)) + im*randn(Float64,(num_pts,dim))
+    x = randn(ComplexF64,(num_pts,dim))
     r = rand(Float64,(num_pts,)).^(1/dim)
     norm = sqrt.(sum(abs2, x; dims=2))
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
