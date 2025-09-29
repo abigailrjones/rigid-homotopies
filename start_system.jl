@@ -58,15 +58,18 @@ function sample_linear_intersection(num_funcs, num_vars)
         # for linear forms the rank is automatically one, so the orthogonal
         # complement is spanned by the first row, and the null space is spanned
         # by remaining rows
+        # orthogonal complement to null space is spanned by first row of Vt (in
+        # this case), since null space is spanned by complex conjugate of
+        # remaining rows of Vt
         union_orthog_comp[idx,:] = svd_res.Vt[1,:]
-        push!(null_spaces, svd_res.Vt[2:end,:])
+        push!(null_spaces, conj(svd_res.Vt[2:end,:]))
     end
 
     svd_res = svd(union_orthog_comp, full=true)
     num_rows, _ = size(svd_res.Vt)
     r = length(svd_res.S)
     random_coeffs = randn(ComplexF64, (1,num_rows-r))
-    start_root = random_coeffs * svd_res.Vt[(r+1):end,:]
+    start_root = random_coeffs * conj(svd_res.Vt[(r+1):end,:])
 
     return reshape(start_root / norm(start_root), num_vars), null_spaces
 end
@@ -92,38 +95,35 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
     grad_f = reshape(gradient(X->real(f(X)), init_root)[1] |> conj,
                      (1,num_vars))
     svd_res = svd(grad_f, full=true)
-    tangent_space = svd_res.Vt[2:end,:]
+    # getting columns of V as rows by just taking complex conjugate of Vt
+    tangent_space = conj(svd_res.Vt[2:end,:])
 
     # write init_root in terms of basis for tangent space
     # (tangent space is a matrix with dims (num_vars-1) x num_vars, and init
     # root is a vector with dims num_vars x 1)
     alpha = conj(tangent_space) * init_root
-    println(transpose(tangent_space)*alpha - init_root)
-    alpha = reshape(init_root,(1,num_vars)) * tangent_space'
-    println(alpha*tangent_space-reshape(init_root, (1,num_vars)))
-    # @assert isapprox(reshape(tangent_space,(num_vars,num_vars-1))*alpha - init_root, zeros(num_vars,1), atol=TOL)
-    @assert false
+    @assert isapprox(transpose(tangent_space)*alpha - init_root,
+                     zeros(num_vars,1), atol=TOL)
 
     # write start_root in terms of basis for null space (computed in
     # sample_linear_intersection)
     # (null space is a matrix with dims (num_vars-1) x num_vars, and start root
     # is a vector with dims num_vars x 1)
     beta = conj(null_space) * start_root
-    @assert isapprox(transpose(null_space)*beta - start_root, zeros(num_vars,1), atol=TOL)
+    @assert isapprox(transpose(null_space)*beta - start_root,
+                     zeros(num_vars,1), atol=TOL)
 
     # compute matrix Gamma such that Gamma alpha = beta
-    # FIXME check that alpha doesn't need to be conjugated?
-    # svd_res = svd(beta * reshape(alpha,(1,num_vars-1)))
     svd_res = svd(beta * alpha')
     Gamma = svd_res.U * svd_res.Vt
-    println(Gamma * alpha - beta)
     @assert isapprox(Gamma * alpha - beta, zeros(num_vars-1,1), atol=TOL)
 
-    # FIXME check tangent space doesn't need to be conjugated
-    svd_res = svd(reshape(null_space,(num_vars,num_vars-1)) * Gamma *
-                  tangent_space)
+    svd_res = svd(transpose(null_space) * Gamma * conj(tangent_space))
     res = svd_res.U * svd_res.Vt
-    @assert isapprox(res * reshape(tangent_space,(num_vars,num_vars-1)),
-                     reshape(null_space,(num_vars,num_vars-1))*Gamma,atol=TOL)
-    return svd_res.U * svd_res.Vt
+    @assert isapprox(res*transpose(tangent_space) -
+                     transpose(null_space)*Gamma, zeros(num_vars,num_vars-1),
+                     atol=TOL)
+
+    @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
+    return res
 end
