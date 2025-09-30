@@ -44,7 +44,7 @@ end
 function print_input()
 end
 
-function print_output(F, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
+function print_output(target_system, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
     println("")
     println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
     println("Converged in $num_steps step(s)")
@@ -52,7 +52,7 @@ function print_output(F, final_root, use_heuristic, num_steps, avg_step_size, av
     println("Average number of Newton iterations per step: $avg_newton_iters")
     println("")
     println("Final root: $(round.(final_root; digits=8))")
-    println("System residuals: $([round.(func(final_root); digits=8) for func in F])")
+    println("System residuals: $(round.(target_system(final_root); digits=8))")
     return
 end
 
@@ -86,8 +86,8 @@ function check_build_path(path, start_system, num_vars)
     return
 end
 
-function check_track_path(F, final_root)
-    @assert isapprox([func(final_root) for func in F], zeros(num_funcs,), atol=TOL)
+function check_track_path(target_system, final_root)
+    @assert isapprox(target_system(final_root), zeros(num_funcs,), atol=TOL)
     #=
     if !isapprox([func(final_root) for func in F], zeros(num_funcs,), atol=TOL)
         println("$([func(final_root) for func in F])")

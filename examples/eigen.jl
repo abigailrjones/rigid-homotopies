@@ -3,9 +3,13 @@
 The starting polynomial system is a standard eigenvalue problem: F(v,lambda) =
 A v - lambda v.
 
-The target polynomial system is another eigenvalue problem, but for the matrix
-whose ith row is the ith row of A times (on the right) the conjugate transpose
-of the ith matrix in the target system. The target system is chosen randomly.
+The target polynomial system is like a twisted eigenvalue problem. It may be an
+eigenvalue problem itself, but I struggled to put it in that exact form, hence
+the ``twisted" designation.
+
+The primary goal of this example is to simply track a path from a known start
+point to a random terminal point. We can then check whether path jumping is
+occurring.
 
 =#
 
@@ -48,15 +52,3 @@ path = t -> [exp((1-t) * log(mat)) for mat in target_system]
 
 final_root, _ = solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic,
                       start_system, start_root, path)
-
-#=
-# TODO check that we understand what this whole problem actually is (that it's
-# just an eigenvalue problem after all, and that we almost certainly
-# overcomplicated things)
-# FIXME I think the program is actually not computing this eigenvalue yet
-# (because of something in track_path) so this is a good check to see if I'm
-# right
-B = Matrix([transpose(A[idx,:]) * target_system[idx][1:end-1,1:end-1] for idx in 1:num_funcs])
-println(B)
-println(B*final_root[1:end-1] - final_root[end]*final_root[1:end-1])
-=#

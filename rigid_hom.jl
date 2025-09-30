@@ -30,55 +30,64 @@ include("choose_timestep.jl")
 # FIXME making this a global variable is perhaps a bit lazy/hacky?
 TOL = eps()*100
 
-function solve(F::Vector, num_funcs::Int, num_vars::Int,
-               max_degree::Int, max_iter::Int, use_heuristic::Bool, start_system,
-               start_root, path)
+function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+        max_iter::Int, use_heuristic::Bool, start_system, start_root, path)
+    println("A start system, start root, and path were provided.")
     check_build_start_system(F, start_system, start_root, num_funcs)
-    # TODO
-    # check_build_path(path, start_system, num_vars)
+    # TODO check_build_path
 
     return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root)
+                     use_heuristic, start_system, start_root, path)
 end
 
-function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
-              max_degree::Int, max_iter::Int, use_heuristic::Bool, start_system,
-              start_root)
+function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+        max_iter::Int, use_heuristic::Bool, start_system, start_root)
+    println("A start system and start root were provided. The default path will
+            be used.")
     check_build_start_system(F, start_system, start_root, num_funcs)
-
-    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root)
-end
-
-function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
-               max_degree::Int, max_iter::Int, use_heuristic::Bool, init_roots)
-    check_init_roots(F, init_roots, num_vars)
-    start_system, start_root = build_start_system(F, init_roots, num_vars)
-    check_build_start_system(F, start_system, start_root, num_funcs)
-
-    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root)
-end
-
-function solve(F::Vector{Function}, num_funcs::Int, num_vars::Int,
-               max_degree::Int, max_iter::Int, use_heuristic::Bool)
-    start_system, start_root = build_start_system(F, num_vars)
-    check_build_start_system(F, start_system, start_root, num_funcs)
-
-    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root)
-end
-
-function rigid_hom(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-                   max_iter::Int, use_heuristic::Bool, start_system, start_root)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
 
-    final_root, num_steps, avg_step_size, avg_newton_iters =
-    track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_vars, use_heuristic)
-    check_track_path(F, final_root)
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root, path)
+end
 
-    print_output(F, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
+function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+        max_iter::Int, use_heuristic::Bool, init_roots)
+    println("A list of initial zeros was provided. A default start system will
+            be computed from these initial zeros, and the default path will be
+            used.")
+    check_init_roots(F, init_roots, num_vars)
+    start_system, start_root = build_start_system(F, init_roots, num_vars)
+    check_build_start_system(F, start_system, start_root, num_funcs)
+    path = build_path(start_system)
+    check_build_path(path, start_system, num_vars)
+
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root, path)
+end
+
+function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+        max_iter::Int, use_heuristic::Bool)
+    println("The default random start system and start root will be used, as
+            well as the default path.")
+    start_system, start_root = build_start_system(F, num_vars)
+    check_build_start_system(F, start_system, start_root, num_funcs)
+    path = build_path(start_system)
+    check_build_path(path, start_system, num_vars)
+
+    return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
+                     use_heuristic, start_system, start_root, path)
+end
+
+function rigid_hom(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+        max_iter::Int, use_heuristic::Bool, start_system, start_root, path)
+    final_root, target_system, num_steps, avg_step_size, avg_newton_iters =
+    track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_vars,
+               use_heuristic)
+    check_track_path(target_system, final_root)
+
+    print_output(target_system, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
     return final_root, num_steps, avg_step_size
 end
 
@@ -100,8 +109,10 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_va
     root = start_root
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=TOL)
-            final_root, _ = newton!(root, X -> [F[idx](X) for idx in 1:num_funcs])
-            return choose_unique_rep(final_root), iter-1,
+            W_0 = path(0.0)
+            target_system = X -> [F[idx](W_0[idx]' * X) for idx in 1:num_funcs]
+            final_root, _ = newton!(root, target_system)
+            return choose_unique_rep(final_root), target_system, iter-1,
                    sum(step_sizes)/length(step_sizes),
                    sum(newton_iter)/length(newton_iter)
         else
