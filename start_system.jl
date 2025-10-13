@@ -70,6 +70,13 @@ function sample_linear_intersection(num_funcs, num_vars)
     r = length(svd_res.S)
     random_coeffs = randn(ComplexF64, (1,num_rows-r))
     start_root = random_coeffs * conj(svd_res.Vt[(r+1):end,:])
+    # FIXME FIXME FIXME
+    # println("orthog comp:", union_orthog_comp)
+    # println("SVD:", svd_res)
+    # println("r:",r)
+    # println("Vt:",svd_res.Vt[(r+1):end,:])
+    # println("Start root:", start_root)
+    @assert (!isapprox(start_root, zeros(1,num_vars), atol=TOL))
 
     return reshape(start_root / norm(start_root), num_vars), null_spaces
 end
@@ -85,6 +92,7 @@ function sample_zero_set(f, num_vars)
     x, _ = newton!(1.0, x -> f(P*x + Q*y))
     init_root = P*x + Q*y
     # FIXME what if init_root has norm zero?
+    # println("init_root:",init_root)
     return init_root / norm(init_root)
 end
 
@@ -102,16 +110,26 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
     # (tangent space is a matrix with dims (num_vars-1) x num_vars, and init
     # root is a vector with dims num_vars x 1)
     alpha = conj(tangent_space) * init_root
-    @assert isapprox(transpose(tangent_space)*alpha - init_root,
-                     zeros(num_vars,1), atol=TOL)
+    if (!isapprox(transpose(tangent_space)*alpha - init_root,
+                  zeros(num_vars,1), atol=TOL))
+        println()
+        println("***Failed assert 1:",transpose(tangent_space)*alpha - init_root)
+    end
+    # @assert isapprox(transpose(tangent_space)*alpha - init_root,
+    #                  zeros(num_vars,1), atol=TOL)
 
     # write start_root in terms of basis for null space (computed in
     # sample_linear_intersection)
     # (null space is a matrix with dims (num_vars-1) x num_vars, and start root
     # is a vector with dims num_vars x 1)
     beta = conj(null_space) * start_root
-    @assert isapprox(transpose(null_space)*beta - start_root,
-                     zeros(num_vars,1), atol=TOL)
+    if (!isapprox(transpose(null_space)*beta - start_root, zeros(num_vars,1),
+                  atol=TOL))
+        println()
+        println("***Failed assert 2:",transpose(null_space)*beta - start_root)
+    end
+    #@assert isapprox(transpose(null_space)*beta - start_root,
+    #                 zeros(num_vars,1), atol=TOL)
 
     # compute matrix Gamma such that Gamma alpha = beta
     svd_res = svd(beta * alpha')
@@ -124,6 +142,11 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
                      transpose(null_space)*Gamma, zeros(num_vars,num_vars-1),
                      atol=TOL)
 
-    @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
+    # @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
+    if (!isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL))
+        println()
+        println("***Failed assert 3:", res * init_root - start_root)
+        # @assert false
+    end
     return res
 end

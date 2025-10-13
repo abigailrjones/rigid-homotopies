@@ -1,5 +1,4 @@
-# FIXME not needed?
-# using LinearAlgebra
+using LinearAlgebra
 
 # TODO I should figure out how julia handles includes (since I am including
 # utils in start_system)
@@ -100,7 +99,7 @@ end
 function track_path(F, path, start_root, max_degree, max_iter, num_funcs, num_vars, use_heuristic=true)
     t = 1.0
     # TODO passing in initial step for heuristic?
-    dt = use_heuristic ? 1.0 : choose_timestep(F, path(t), start_root, max_degree,
+    dt = use_heuristic ? 0.1 : choose_timestep(F, path(t), start_root, max_degree,
                                                max_iter, num_funcs, num_vars)
     num_iter = 0.0
     step_sizes = []

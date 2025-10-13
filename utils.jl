@@ -88,10 +88,5 @@ end
 
 function check_track_path(target_system, final_root)
     @assert isapprox(target_system(final_root), zeros(num_funcs,), atol=TOL)
-    #=
-    if !isapprox([func(final_root) for func in F], zeros(num_funcs,), atol=TOL)
-        println("$([func(final_root) for func in F])")
-    end
-    =#
     return
 end
