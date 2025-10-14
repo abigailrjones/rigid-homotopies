@@ -5,24 +5,28 @@ set of increasing dimension determinantal problems.
 
 =#
 
-using Plots
-plotlyjs()
-
+# using DelimitedFiles: writedlm
 include("../rigid_hom.jl")
 include("det_poly.jl")
 
+open("examples/data_timestep.txt", "w") do f
+    # empty file of previous contents
+end
 
-num_vars = 4 # free
-degrees = [3,3,3] # had issues when deg >= num_funcs for any degree
-num_funcs = length(degrees)
-max_degree = maximum(degrees)
-max_iter = 1000
-use_heuristic = true
+for dim in 2:8
+    num_vars = dim
+    degrees = dim .+ zeros(Int64, 1, dim-1) # had issues when deg >= num_funcs for any degree
+    num_funcs = length(degrees)
+    max_degree = maximum(degrees)
+    max_iter = 100
+    use_heuristic = false
+    mid_print = false
 
-F = build_det_poly_system(degrees, num_vars)
+    F = build_det_poly_system(degrees, num_vars)
 
-final_root, _ = solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic)
+    final_root, num_steps, avg_step_size = solve(F, num_funcs, num_vars, max_degree, max_iter, use_heuristic, mid_print)
 
-# this last line is just a janky way of forcing julia to not print the return
-# statement of the previous line, which just clutters up the terminal window
-println()
+    open("examples/data_timestep.txt", "a") do f
+        write(f, "$dim $avg_step_size\n")
+    end
+end
