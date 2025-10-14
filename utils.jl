@@ -44,15 +44,22 @@ end
 function print_input()
 end
 
-function print_output(target_system, final_root, use_heuristic, num_steps, avg_step_size, avg_newton_iters)
+function print_output(success, target_system, final_root, use_heuristic,
+                      num_steps, avg_step_size, avg_newton_iters)
     println("")
     println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
-    println("Converged in $num_steps step(s)")
+    if success
+        println("Converged in $num_steps step(s)")
+    else
+        println("Failed to converge in $num_steps step(s)")
+    end
     println("Average timestep: $avg_step_size")
     println("Average number of Newton iterations per step: $avg_newton_iters")
     println("")
-    println("Final root: $(round.(final_root; digits=8))")
-    println("System residuals: $(round.(target_system(final_root); digits=8))")
+    if success
+        println("Final root: $(round.(final_root; digits=8))")
+        println("System residuals: $(round.(target_system(final_root); digits=8))")
+    end
     return
 end
 

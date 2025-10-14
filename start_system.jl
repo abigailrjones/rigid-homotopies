@@ -112,8 +112,11 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
     alpha = conj(tangent_space) * init_root
     if (!isapprox(transpose(tangent_space)*alpha - init_root,
                   zeros(num_vars,1), atol=TOL))
+        # FIXME FIXME
+        #=
         println()
         println("***Failed assert 1:",transpose(tangent_space)*alpha - init_root)
+        =#
     end
     # @assert isapprox(transpose(tangent_space)*alpha - init_root,
     #                  zeros(num_vars,1), atol=TOL)
@@ -125,8 +128,11 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
     beta = conj(null_space) * start_root
     if (!isapprox(transpose(null_space)*beta - start_root, zeros(num_vars,1),
                   atol=TOL))
+        # FIXME FIXME
+        #=
         println()
         println("***Failed assert 2:",transpose(null_space)*beta - start_root)
+        =#
     end
     #@assert isapprox(transpose(null_space)*beta - start_root,
     #                 zeros(num_vars,1), atol=TOL)
@@ -144,8 +150,11 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
 
     # @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
     if (!isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL))
+        # FIXME FIXME
+        #=
         println()
         println("***Failed assert 3:", res * init_root - start_root)
+        =#
         # @assert false
     end
     return res

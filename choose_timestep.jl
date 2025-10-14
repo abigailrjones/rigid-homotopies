@@ -25,7 +25,7 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
 
-function estimate_gammaprob(f::Function,Z,eta,D::Integer)
+function estimate_gammaprob(f::Function,Z,eta,D::Integer,num_vars)
     h(X) = f(Z + X)
     # compute squared norm of gradient of h at zero vector. Note: for
     # holomorphic functions (like polynomials), the Cauchy Riemann equations
@@ -75,7 +75,7 @@ function choose_timestep(F, W_t, Z, D, max_iter, num_funcs, num_vars, eps=1e-8)
     for idx in 1:num_funcs
         func = F[idx]
         W = W_t[idx]
-        sum_g_sq += estimate_gammaprob(X -> func(W' * X),Z,eps/((num_vars-1)*max_iter),D)^2
+        sum_g_sq += estimate_gammaprob(X -> func(W' * X),Z,eps/((num_vars-1)*max_iter),D,num_vars)^2
     end
     return 1/(240 * compute_condition_num(F, W_t, Z, num_funcs)^2 * sqrt(sum_g_sq))
 end
