@@ -30,19 +30,21 @@ include("choose_timestep.jl")
 TOL = eps()*100
 
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, use_heuristic::Bool, start_system, start_root, path,
-        mid_print::Bool=false)
+        max_iter::Int, start_system, start_root, path;
+        use_heuristic::Bool=false, mid_print::Bool=false,
+        initial_dt::Number=0.1)
     if (mid_print) println("A start system, start root, and path were provided.") end
     check_build_start_system(F, start_system, start_root, num_funcs)
     # TODO check_build_path
 
     return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root, path, mid_print)
+                     start_system, start_root, path, use_heuristic, mid_print,
+                     initial_dt)
 end
 
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, use_heuristic::Bool, start_system, start_root,
-        mid_print::Bool=false)
+        max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
+        mid_print::Bool=false, initial_dt::Number=0.1)
     if (mid_print) println("A start system and start root were provided. The \
                             default path will be used.") end
     check_build_start_system(F, start_system, start_root, num_funcs)
@@ -50,11 +52,13 @@ function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root, path, mid_print)
+                     start_system, start_root, path, use_heuristic, mid_print,
+                     initial_dt)
 end
 
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, use_heuristic::Bool, init_roots, mid_print::Bool=false)
+        max_iter::Int, init_roots; use_heuristic::Bool=false,
+        mid_print::Bool=false, initial_dt::Number=0.1)
     if (mid_print) println("A list of initial zeros was provided. A default \
                        start system will be computed from these initial zeros, \
                    and the default path will be used.") end
@@ -65,11 +69,13 @@ function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root, path, mid_print)
+                     start_system, start_root, path, use_heuristic, mid_print,
+                     initial_dt)
 end
 
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, use_heuristic::Bool, mid_print::Bool=false)
+        max_iter::Int; use_heuristic::Bool=false, mid_print::Bool=false,
+        initial_dt::Number=0.1)
     if (mid_print) println("The default random start system and start root will \
                        be used, as well as the default path.") end
     start_system, start_root = build_start_system(F, num_vars)
@@ -78,17 +84,25 @@ function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(F, num_funcs, num_vars, max_degree, max_iter,
-                     use_heuristic, start_system, start_root, path, mid_print)
+                     start_system, start_root, path, use_heuristic, mid_print,
+                     initial_dt)
 end
 
 function rigid_hom(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, use_heuristic::Bool, start_system, start_root, path,
-        mid_print)
+        max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
+        mid_print::Bool, initial_dt,)
     success, final_root, target_system, num_steps, avg_step_size,
     avg_newton_iters = track_path(F, path, start_root, max_degree, max_iter,
-                                  num_funcs, num_vars, use_heuristic, mid_print)
+                                  num_funcs, num_vars, use_heuristic,
+                                  mid_print, initial_dt)
     if success
-        check_track_path(target_system, final_root)
+        try
+            check_track_path(target_system, final_root)
+        catch
+            # FIXME
+            final_root, num_steps, avg_step_size = fill(NaN+NaN*im,num_vars),
+                                                   NaN, NaN
+        end
     end
 
     if (mid_print) print_output(success, target_system, final_root,
@@ -104,11 +118,11 @@ function build_path(start_system)
 end
 
 function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
-        num_vars, use_heuristic=true, mid_print=false)
+        num_vars, use_heuristic, mid_print, initial_dt)
     t = 1.0
-    # TODO passing in initial step for heuristic?
-    dt = use_heuristic ? 0.1 : choose_timestep(F, path(t), start_root, max_degree,
-                                               max_iter, num_funcs, num_vars)
+    dt = use_heuristic ? initial_dt : choose_timestep(F, path(t), start_root,
+                                                      max_degree, max_iter,
+                                                      num_funcs, num_vars)
     num_iter = 0.0
     step_sizes = []
     newton_iter = []
@@ -155,7 +169,7 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
             else
                 push!(step_sizes, dt)
                 push!(newton_iter, num_iter)
-                root = choose_unique_rep(root)
+                # root = choose_unique_rep(root)
                 if !use_heuristic
                     dt = choose_timestep(F, path(t), start_root, max_degree,
                                          max_iter, num_funcs, num_vars)

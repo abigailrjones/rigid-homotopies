@@ -3,7 +3,7 @@ using DelimitedFiles: readdlm
 using Plots
 plotlyjs()
 
-data = readdlm("examples/data_timestep.txt")
+data = readdlm("examples/data/data_timestep.txt")
 
 plot(data[1:end,1], data[1:end,2], yscale=:log10, c=1, label="")
 plot!(data[1:end,1], data[1:end,2], st=:scatter, yscale=:log10, c=1,

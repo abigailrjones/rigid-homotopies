@@ -44,6 +44,8 @@ function estimate_gammaprob(f::Function,Z,eta,D::Integer,num_vars)
     return_est = 0
     fac = k -> (32*(num_vars-1)*k)^k*binomial(num_vars+k, k)/d0h_sq_norm/s
     for k in 2:D
+        # FIXME sometimes fac(k) gets big and negative and this produces a
+        # DomainError with the exponentiation (something to do with complex)
         new_est = (fac(k)*sum_squared_components[k+1])^(1/(2*k-2))
         if new_est > return_est
             return_est = new_est
@@ -70,7 +72,7 @@ function compute_condition_num(F, W_t, Z, num_funcs)
     return 1.0 / svdvals(L)[end]
 end
 
-function choose_timestep(F, W_t, Z, D, max_iter, num_funcs, num_vars, eps=1e-8)
+function choose_timestep(F, W_t, Z, D, max_iter, num_funcs, num_vars; eps=1e-8)
     sum_g_sq = 0.0
     for idx in 1:num_funcs
         func = F[idx]

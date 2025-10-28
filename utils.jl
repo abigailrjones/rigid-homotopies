@@ -1,12 +1,12 @@
 using Zygote: jacobian
 
-function newton!(guess, F_t, max_iter=1000)
+function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
     # next line is complex diffentiation (recall Cauchy-Riemann)
     jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
     err = 1.0
     give_up = 1e10
     num_iter = 0
-    while !isapprox(err, 0.0, atol=TOL) & (err < give_up) & (num_iter < max_iter)
+    while !isapprox(err, 0.0, atol=tol) & (err < give_up) & (num_iter < max_iter)
         if size(guess) == ()
             # jac_pinv returns a 1x1 vector in this case, when we need a scalar
             # so that operations with guess are defined
@@ -37,7 +37,7 @@ end
 # FIXME this isn't unique
 function choose_unique_rep(x)
     # return x / norm(x)
-    return x
+    return x / x[1]
 end
 
 # TODO
@@ -58,7 +58,8 @@ function print_output(success, target_system, final_root, use_heuristic,
     println("")
     if success
         println("Final root: $(round.(final_root; digits=8))")
-        println("System residuals: $(round.(target_system(final_root); digits=8))")
+        # println("System residuals: $(round.(target_system(final_root); digits=20))")
+        println("System residuals: $(target_system(final_root))")
     end
     return
 end
