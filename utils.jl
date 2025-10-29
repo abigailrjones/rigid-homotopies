@@ -1,5 +1,7 @@
 using Zygote: jacobian
 
+CUT_OFF = 5.0
+
 function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
     # next line is complex diffentiation (recall Cauchy-Riemann)
     jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
@@ -34,10 +36,12 @@ function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
     return guess, num_iter
 end
 
-# FIXME this isn't unique
-function choose_unique_rep(x)
-    # return x / norm(x)
-    return x / x[1]
+function scale_root(x)
+    max_idx = argmax(abs.(x))
+    if abs(x[max_idx]) >= CUT_OFF
+        x = x ./ x[max_idx]
+    end
+    return x
 end
 
 # TODO

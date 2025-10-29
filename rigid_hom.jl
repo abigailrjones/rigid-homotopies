@@ -133,18 +133,11 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
             W_0 = path(0.0)
             target_system = X -> [F[idx](W_0[idx]' * X) for idx in 1:num_funcs]
             final_root, _ = newton!(root, target_system)
-            return true, choose_unique_rep(final_root), target_system, iter-1,
+            return true, scale_root(final_root), target_system, iter-1,
                    sum(step_sizes)/length(step_sizes),
                    sum(newton_iter)/length(newton_iter)
         else
             t -= dt
-            # FIXME FIXME FIXME
-            #=
-            if iter % (max_iter // 100) == 0
-                println("Iteration $iter at time t=$t, dt=$dt")
-                println("Previous time at t=$(t+dt)")
-            end
-            =#
             W_t = path(t)
             F_t = X -> [F[idx](W_t[idx]' * X) for idx in 1:num_funcs]
             try
@@ -169,7 +162,7 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
             else
                 push!(step_sizes, dt)
                 push!(newton_iter, num_iter)
-                # root = choose_unique_rep(root)
+                root = scale_root(root)
                 if !use_heuristic
                     dt = choose_timestep(F, path(t), start_root, max_degree,
                                          max_iter, num_funcs, num_vars)

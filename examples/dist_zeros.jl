@@ -8,11 +8,11 @@ open("examples/data/data_dist_zeros.txt", "w") do f
     # empty file of previous contents
 end
 
-num_vars = 3 # free
-degrees = [3,3] # had issues when deg >= num_funcs for any degree
+num_vars = 4
+degrees = [4,4,4]
 num_funcs = length(degrees)
 max_degree = maximum(degrees)
-max_iter = 100
+max_iter = 1000
 use_heuristic = true
 mid_print = false
 

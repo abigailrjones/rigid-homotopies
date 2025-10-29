@@ -40,7 +40,7 @@ for idx in 1:10
     # plot
     plot!(dims, data, yscale=:log10, c=idx, label="")
     plot!(dims, data, st=:scatter, yscale=:log10, c=idx,
-          label="",xlabel="N",ylabel="timestep",title="(N-1) degree N \
+          label="",xlabel="N",ylabel="timestep",title="(N-1) degree-N \
           polynomials in N variables")
 end
 
