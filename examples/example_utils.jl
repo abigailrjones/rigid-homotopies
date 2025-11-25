@@ -12,6 +12,15 @@ function rand_mat(dim, complex=false)
     end
 end
 
+function build_waring_system(rank, degrees, num_vars)
+    F = []
+    for deg in degrees
+        M = [rand(ComplexF64, num_vars) for _ in 1:rank]
+        push!(F, X -> sum([sum(M[idx] .* X)^deg for idx in 1:rank]))
+    end
+    return F
+end
+
 function build_my_system(degrees, num_vars)
     F = []
     for deg in degrees

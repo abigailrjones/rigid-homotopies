@@ -14,8 +14,8 @@
      with num_funcs or num_vars as global elements or something?
 =#
 
+include("utils.jl")
 using Zygote: gradient, jacobian
-using FFTW: fft
 
 # Note to self: verified real version via plotting
 function sample_unit_ball(dim::Integer, num_pts::Integer)
@@ -42,22 +42,14 @@ function estimate_gammaprob(f::Function,Z,eta,D::Integer,num_vars)
         sum_squared_components += abs.(compute_deg_components(h,w,D)).^2
     end
     return_est = 0
-    fac = k -> (32*(num_vars-1)*k)^k*binomial(num_vars+k, k)/d0h_sq_norm/s
+    fac = k -> binomial(num_vars+k, k)/d0h_sq_norm/s
     for k in 2:D
-        # FIXME sometimes fac(k) gets big and negative and this produces a
-        # DomainError with the exponentiation (something to do with complex)
-        new_est = (fac(k)*sum_squared_components[k+1])^(1/(2*k-2))
+        new_est = (32*(num_vars-1)*k)^(1/(2-2/k))*(fac(k)*sum_squared_components[k+1])^(1/(2*k-2))
         if new_est > return_est
             return_est = new_est
         end
     end
     return return_est
-end
-
-# returns a vector with D+1 components, representing the 0:Dth degree
-# components of the given polynomial f evaluated at the input
-function compute_deg_components(f::Function,input,D::Integer)
-    return fft([f(exp(2*pi*im*j/(D+1))*input) for j in 0:D]) / (D+1)
 end
 
 # condition number is denoted by \kappa in the papers

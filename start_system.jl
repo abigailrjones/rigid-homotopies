@@ -17,12 +17,13 @@ end
 
 # input a system of polynomials, returns a randomly sampled start system and
 # start root
-function build_start_system(F, num_vars)
+function build_start_system(F, degrees::Vector{Int}, num_vars)
     num_funcs = length(F)
     start_root, null_spaces = sample_linear_intersection(num_funcs, num_vars)
     start_system = []
     for idx in 1:num_funcs
-        init_root = sample_zero_set(F[idx], num_vars)
+        init_root = sample_zero_set(F[idx], num_vars, degrees[idx])
+        check_sampled_init_root(F[idx], init_root)
         push!(start_system, map_init_to_start(F[idx], init_root, start_root,
                                               null_spaces[idx], num_funcs,
                                               num_vars))
@@ -84,16 +85,41 @@ end
 # intersect zero set of inputted polynomial with a random line, sample their
 # intersection (this yields a random initial point in the zero set of the given
 # polynomial)
-function sample_zero_set(f, num_vars)
+function sample_zero_set(f, num_vars, deg)
     P = randn(ComplexF64, num_vars)
     Q = randn(ComplexF64, num_vars)
-    y = randn(ComplexF64)
 
-    x, _ = newton!(1.0, x -> f(P*x + Q*y))
-    init_root = P*x + Q*y
+    local init_root
+    try
+        sol, _ = newton!([1.0,1.0], X -> f(P*X[1] + Q*X[2]))
+        x,y = sol
+        init_root = P*x + Q*y
+        check_sampled_init_root(f, init_root)
+    catch e
+        println("Newton ran into error... $e. Trying companion matrix...")
+
+        # run companion matrix
+        coeffs = compute_deg_components(x -> f(P*x + Q), 1.0, deg)
+        @assert (!isapprox(coeffs[end], 0.0, atol=TOL))
+        M = diagm(-1 => ones(ComplexF64, deg-1))
+        M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
+        roots = eigvals(M)
+        for root in roots
+            init_root = P*root + Q
+            if (isapprox(f(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
+                check_sampled_init_root(f, init_root)
+                return init_root / norm(init_root)
+            end
+        end
+    else
+        return init_root / norm(init_root)
+    end
+    # TODO TODO TODO is the scaling throw things off? This last failure had the
+    # assert triggered in build_start_system, not here
+
     # FIXME what if init_root has norm zero?
-    # println("init_root:",init_root)
-    return init_root / norm(init_root)
+    # return init_root / norm(init_root)
+    throw(ErrorException("Failed to sample an initial zero."))
 end
 
 # FIXME (not sure I understand the intution behind this part)
@@ -118,8 +144,8 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
         println("***Failed assert 1:",transpose(tangent_space)*alpha - init_root)
         =#
     end
-    # @assert isapprox(transpose(tangent_space)*alpha - init_root,
-    #                  zeros(num_vars,1), atol=TOL)
+    @assert isapprox(transpose(tangent_space)*alpha - init_root,
+                     zeros(num_vars,1), atol=TOL)
 
     # write start_root in terms of basis for null space (computed in
     # sample_linear_intersection)
@@ -134,8 +160,8 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
         println("***Failed assert 2:",transpose(null_space)*beta - start_root)
         =#
     end
-    #@assert isapprox(transpose(null_space)*beta - start_root,
-    #                 zeros(num_vars,1), atol=TOL)
+    @assert isapprox(transpose(null_space)*beta - start_root,
+                     zeros(num_vars,1), atol=TOL)
 
     # compute matrix Gamma such that Gamma alpha = beta
     svd_res = svd(beta * alpha')
@@ -148,7 +174,7 @@ function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_
                      transpose(null_space)*Gamma, zeros(num_vars,num_vars-1),
                      atol=TOL)
 
-    # @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
+    @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
     if (!isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL))
         # FIXME FIXME
         #=

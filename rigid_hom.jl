@@ -33,6 +33,7 @@ function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path;
         use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
+    check_inputs(num_funcs, num_vars)
     if (mid_print) println("A start system, start root, and path were provided.") end
     check_build_start_system(F, start_system, start_root, num_funcs)
     # TODO check_build_path
@@ -45,6 +46,7 @@ end
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Number=0.1)
+    check_inputs(num_funcs, num_vars)
     if (mid_print) println("A start system and start root were provided. The \
                             default path will be used.") end
     check_build_start_system(F, start_system, start_root, num_funcs)
@@ -59,6 +61,7 @@ end
 function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, init_roots; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Number=0.1)
+    check_inputs(num_funcs, num_vars)
     if (mid_print) println("A list of initial zeros was provided. A default \
                        start system will be computed from these initial zeros, \
                    and the default path will be used.") end
@@ -73,12 +76,14 @@ function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
                      initial_dt)
 end
 
-function solve(F::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+function solve(F::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int; use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
+    check_inputs(num_funcs, num_vars)
+    max_degree = maximum(degrees)
     if (mid_print) println("The default random start system and start root will \
                        be used, as well as the default path.") end
-    start_system, start_root = build_start_system(F, num_vars)
+    start_system, start_root = build_start_system(F, degrees, num_vars)
     check_build_start_system(F, start_system, start_root, num_funcs)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
