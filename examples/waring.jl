@@ -15,7 +15,7 @@ num_vars = 2
 degrees = [3]
 rank = 3
 num_funcs = length(degrees)
-max_iter = 10000000
+max_iter = 1_000_000_000
 use_heuristic = false
 mid_print = true
 

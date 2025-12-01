@@ -134,7 +134,7 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
 
     root = start_root
     for iter in 1:max_iter
-        if isapprox(t, 0.0, atol=TOL)
+        if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
             W_0 = path(0.0)
             target_system = X -> [F[idx](W_0[idx]' * X) for idx in 1:num_funcs]
             final_root, _ = newton!(root, target_system)
