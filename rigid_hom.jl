@@ -1,3 +1,4 @@
+using Statistics
 using LinearAlgebra
 
 # TODO I should figure out how julia handles includes (since I am including
@@ -138,6 +139,13 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
             W_0 = path(0.0)
             target_system = X -> [F[idx](W_0[idx]' * X) for idx in 1:num_funcs]
             final_root, _ = newton!(root, target_system)
+
+            println("Median: $(median(step_sizes)), minimum: $(minimum(step_sizes)), maximum: $(maximum(step_sizes))")
+            #=
+            println("Number of iterations: $(iter-1)")
+            return true, NaN, [], iter-1, sum(step_sizes)/length(step_sizes),NaN
+                   #sum(newton_iter)/length(newton_iter)
+            =#
             return true, scale_root(final_root), target_system, iter-1,
                    sum(step_sizes)/length(step_sizes),
                    sum(newton_iter)/length(newton_iter)
@@ -169,10 +177,15 @@ function track_path(F, path, start_root, max_degree, max_iter, num_funcs,
                 push!(newton_iter, num_iter)
                 root = scale_root(root)
                 if !use_heuristic
-                    dt = choose_timestep(F, path(t), start_root, max_degree,
+                    dt = choose_timestep(F, path(t), root, max_degree,
                                          max_iter, num_funcs, num_vars)
                 end
             end
+            #=
+            push!(step_sizes, dt)
+            dt = choose_timestep(F, path(t), start_root, max_degree, max_iter,
+                                 num_funcs, num_vars)
+            =#
         end
     end
 

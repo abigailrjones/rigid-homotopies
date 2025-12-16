@@ -1,12 +1,24 @@
 using BenchmarkTools
 using Zygote
-using Plots
 
 include("../example_utils.jl")
 
 
-a = 13
-b = 15
+function direct(F, input1, input2)
+    Zygote.jacobian(X -> real(FF(X)), input1)[1] |> conj
+    Zygote.jacobian(X -> real(FF(X)), input2)[1] |> conj
+    return
+end
+
+function symbolic(F, input1, input2)
+    jac = Y -> Zygote.jacobian(X -> real(FF(X)), Y)[1] |> conj
+    jac(input1)
+    jac(input2)
+    return
+end
+
+a = 5
+b = 10
 
 D = 2 # degree
 r = 3 # waring rank (r > D)
@@ -24,11 +36,15 @@ for i in a:b
     global F = build_waring_system(r, DD, base^i)
     global function ff(X::Vector) return F[1](X) end
     global function FF(X::Vector) return [F[idx](X) for idx in 1:length(F)] end
-    global input = rand(ComplexF64, base^i)
+    global input1 = rand(ComplexF64, base^i)
+    global input2 = rand(ComplexF64, base^i)
 
-    poly_res = @btimed Zygote.gradient(X -> real(ff(X)), input)[1] |> conj
-    sys_res = @btimed Zygote.jacobian(X -> real(FF(X)), input)[1] |> conj
+    num_res = @btimed direct(FF, input1, input2)
+    sym_res = @btimed symbolic(FF, input1, input2)
+    println(i, " ", num_res.time, " ", sym_res.time)
+    #=
     open("examples/profiling/data/data_check_jac_complexity.txt", "a") do file
         write(file, "$i $(poly_res.time) $(sys_res.time)\n")
     end
+    =#
 end

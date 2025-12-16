@@ -21,6 +21,37 @@ function build_waring_system(rank, degrees, num_vars)
     return F
 end
 
+struct WaringPoly
+    num_vars::Int
+    deg::Int
+    rank::Int
+    M::Array{ComplexF64}
+end
+
+WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,num_vars,rank))
+
+function evaluate_waring_poly(X, params::WaringPoly)::ComplexF64
+    return sum([sum(params.M[:,idx] .* X)^params.deg for idx in 1:params.rank])
+end
+
+function evaluate_waring_system(X, params::Vector{WaringPoly})::Vector{ComplexF64}
+    res = zeros(ComplexF64, length(params))
+    for idx in 1:length(params)
+        p = params[idx]
+        res[idx] = sum([sum(p.M[:,idx] .* X)^p.deg for idx in 1:p.rank])
+    end
+    # return sum([sum(params.M[:,idx] .* X)^params.deg for idx in 1:params.rank])
+    return res
+end
+
+function construct_waring_system_type_safe(rank, degrees, num_vars)::Vector{WaringPoly}
+    F = []
+    for deg in degrees
+        push!(F, WaringPoly(num_vars,deg,rank))
+    end
+    return F
+end
+
 function build_my_system(degrees, num_vars)
     F = []
     for deg in degrees

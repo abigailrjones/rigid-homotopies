@@ -17,7 +17,10 @@ end
 
 function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
     # next line is complex diffentiation (recall Cauchy-Riemann)
-    jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
+    # jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
+    # split line 20 into differentiation and inversion so that profiler can
+    # distinguish
+    # jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
 
     err = 1.0
     residual = 1.0
@@ -32,12 +35,13 @@ function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
             # println(residual)
             return guess, num_iter
         else
+            jac = jacobian(x -> real(F_t(x)), guess)
             if size(guess) == ()
                 # jac_pinv returns a 1x1 vector in this case, when we need a scalar
                 # so that operations with guess are defined
-                next_guess = guess - (jac_pinv(guess) * F_t(guess))[1]
+                next_guess = guess - (pinv(jac[1] |> conj) * F_t(guess))[1]
             else
-                next_guess = guess - (jac_pinv(guess) * F_t(guess))
+                next_guess = guess - (pinv(jac[1] |> conj) * F_t(guess))
             end
             residual = norm(F_t(guess))
             err = norm(next_guess - guess)
