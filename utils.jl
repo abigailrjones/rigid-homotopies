@@ -1,5 +1,6 @@
 using FFTW: fft
 using Zygote: jacobian
+using LinearAlgebra: pinv, norm
 
 CUT_OFF = 5.0
 
@@ -15,16 +16,21 @@ function compute_deg_components(f::Function,input,D::Integer)
     return fft([f(exp(2*pi*im*j/(D+1))*input) for j in 0:D]) / (D+1)
 end
 
-function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
+function newton!(guess::Vector{ComplexF64}, F_t; max_iter=1000, tol=eps()*100)::Int
+    # TODO need to handle error cases (which are now returning negative integers instead of errors to reduce need for runtime work)
+    # TODO need to update body of code so that guess is changed in place, only num_iters returned
+    # TODO need to guarantee that guess is ComplexF64
+    # TODO is declaring return type as Int fine? (Or is Int too vague or too specific?)
     # next line is complex diffentiation (recall Cauchy-Riemann)
     # jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
     # split line 20 into differentiation and inversion so that profiler can
     # distinguish
     # jac_pinv = input -> pinv(jacobian(x -> real(F_t(x)), input)[1] |> conj)
 
-    err = 1.0
+    inc = Vector{ComplexF64}(undef, length(guess))
     residual = 1.0
-    give_up = 1e10
+    err = 1.0
+    give_up = 1.0e10
     num_iter = 0
     num_small = 0
     magic = 3
@@ -33,18 +39,14 @@ function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
     while (err < give_up) & (num_iter < max_iter)
         if (num_small > magic) & isapprox(residual, 0.0, atol=tol)
             # println(residual)
-            return guess, num_iter
+            return num_iter
         else
             jac = jacobian(x -> real(F_t(x)), guess)
-            if size(guess) == ()
-                # jac_pinv returns a 1x1 vector in this case, when we need a scalar
-                # so that operations with guess are defined
-                next_guess = guess - (pinv(jac[1] |> conj) * F_t(guess))[1]
-            else
-                next_guess = guess - (pinv(jac[1] |> conj) * F_t(guess))
-            end
+            inc .= (pinv(jac[1] |> conj) * F_t(guess))
+            guess .-= inc
             residual = norm(F_t(guess))
-            err = norm(next_guess - guess)
+            err = norm(inc)
+
             if isapprox(err, 0.0, atol=tol) num_small += 1
             else num_small = 0
             end
@@ -52,17 +54,18 @@ function newton!(guess, F_t; max_iter=1000, tol=eps()*100)
             println("Iteration $num_iter: guess=$(round.(guess; digits=3)), next
                     guess=$(round.(next_guess; digits=3))")
             =#
-            guess = next_guess
             num_iter += 1
         end
     end
 
     if err >= give_up
-        throw(ErrorException("Newton's method is going to infinity."))
+        # throw(ErrorException("Newton's method is going to infinity."))
+        return -1
     end
 
     if num_iter >= max_iter
-        throw(ErrorException("Newton's method failed to converge within $max_iter iterations."))
+        # throw(ErrorException("Newton's method failed to converge within $max_iter iterations."))
+        return -2
     end
 end
 

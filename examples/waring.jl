@@ -1,4 +1,5 @@
 # using Zygote: jacobian
+using ProfileView
 
 include("../rigid_hom.jl")
 include("example_utils.jl")
@@ -10,14 +11,14 @@ TOL = eps()*1000
     # empty file of previous contents
 # end
 
-a = 3
-b = 3
+a = 2
+b = 2
 base = 2
 
-num_vars = 2
-degrees = [3]
-num_funcs = 1
-max_iter = 1_000_000
+num_vars = 3
+degrees = [3,4]
+num_funcs = length(degrees)
+max_iter = 100#_000
 use_heuristic = false
 mid_print = true
 
@@ -29,6 +30,9 @@ for i in a:b
     local num_steps
     local avg_step_size
 
+    @profview solve(F, num_funcs, num_vars, degrees, max_iter;
+                    use_heuristic=use_heuristic, mid_print=mid_print)
+    #=
     try
         _, num_steps, avg_step_size = solve(F, num_funcs, num_vars, degrees,
                                             max_iter;
@@ -47,6 +51,7 @@ for i in a:b
         end
         # compare_zero!(roots, final_root, num_vars)
     end
+    =#
 end
 # println(length(roots))
 

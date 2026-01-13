@@ -12,6 +12,7 @@ function rand_mat(dim, complex=false)
     end
 end
 
+# TODO remove old version, assuming struct version is better
 function build_waring_system(rank, degrees, num_vars)
     F = []
     for deg in degrees
@@ -25,23 +26,47 @@ struct WaringPoly
     num_vars::Int
     deg::Int
     rank::Int
+    # can we include that M is a num_vars x rank dimensioned array?
     M::Array{ComplexF64}
 end
 
 WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,num_vars,rank))
 
-function evaluate_waring_poly(X, params::WaringPoly)::ComplexF64
+function old_evaluate_waring_poly(X, params::WaringPoly)
     return sum([sum(params.M[:,idx] .* X)^params.deg for idx in 1:params.rank])
 end
 
-function evaluate_waring_system(X, params::Vector{WaringPoly})::Vector{ComplexF64}
-    res = zeros(ComplexF64, length(params))
-    for idx in 1:length(params)
-        p = params[idx]
-        res[idx] = sum([sum(p.M[:,idx] .* X)^p.deg for idx in 1:p.rank])
-    end
+function old_evaluate_waring_system(X, params::Vector{WaringPoly})::Vector{ComplexF64}
+    return [sum([sum(p.M[:,idx] .* X)^p.deg for idx in 1:p.rank]) for p in params]
+end
+
+function evaluate_waring_poly(X, params::WaringPoly)::ComplexF64
+    # FIXME Enzyme doesn't like the intermediate array that is built in the below call
+    # I think (error message includes ``Unknown object of type Array{ComplexF64}"), and
+    # indeed Julia performance tips suggest not building such intermediate arrays anyway
+    # and just summing directly, so here we are.
     # return sum([sum(params.M[:,idx] .* X)^params.deg for idx in 1:params.rank])
+    res = 0.0 + 0*im
+    for idx in 1:params.rank
+        res += sum(params.M[:,idx] .* X)^params.deg
+    end
     return res
+end
+
+function evaluate_waring_system(X, params::Vector{WaringPoly})::Vector{ComplexF64}
+    # return [sum([sum(p.M[:,idx] .* X)^p.deg for idx in 1:p.rank]) for p in params]
+    res = zeros(ComplexF64, length(params))
+    for i in 1:length(params)
+        P = params[i]
+        for j in 1:P.rank
+            res[i] += sum(P.M[:,j] .* X)^P.deg
+        end
+    end
+    return res
+end
+
+function symbolic_evaluate_waring_poly(X, params::WaringPoly)
+    return sum([sum(params.M[:,idx] .* X)^params.deg for idx in 1:params.rank])
 end
 
 function construct_waring_system_type_safe(rank, degrees, num_vars)::Vector{WaringPoly}
