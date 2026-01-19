@@ -5,6 +5,17 @@ using Enzyme
 
 include("../example_utils.jl")
 
+function build_gradient_forward(guess, P)
+    return Enzyme.autodiff(Forward, evaluate_waring_poly, Duplicated,
+                           BatchDuplicated(guess, d_guess), Const(P))
+end
+
+function build_jacobian_forward(guess, params)
+    return Enzyme.autodiff(Forward, evaluate_waring_system, Duplicated,
+                           BatchDuplicated(guess, d_guess), Const(params))
+end
+
+
 @assert false
 
 function build_gradient_forward(guess, P)

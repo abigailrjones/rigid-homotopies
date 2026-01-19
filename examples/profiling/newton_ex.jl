@@ -10,10 +10,10 @@ F_t = X -> [F[idx](X) for idx in 1:length(F)]
 
 function newton_waring_test(num_vars, degrees, rank)
     num_funcs = length(degrees)
-    F = construct_waring_system_type_safe(rank, degrees, num_vars)
-    F_t = X -> evaluate_waring_system(X, F)
+    Polys = construct_waring_system_type_safe(rank, degrees, num_vars)
     for i in 1:10
         guess = rand(ComplexF64, num_vars)
-        newton!(guess, F_t)
+        res = newton!(guess, Polys)
+        @assert (res >= 0)
     end
 end

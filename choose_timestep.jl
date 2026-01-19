@@ -1,19 +1,3 @@
-#=
-   JULIA STYLE GUIDE NOTES
-   * apparently we should prefer to keep typing as non-specific as possible
-   * if a function modifies its arguments, append ! to name of function
-   * apparently they dislike underscores, and prefer to squish words together in
-     function names whenever possible (bizarre, and I disagree with this one vehemently
-     so I will be ignoring it)
-
-   RANDOM NOTES
-   * It probably makes sense to write this last step as a for loop, in
-     fact we should probably minimize the number of list comprehensions we
-     use, for clarity.
-   * Also I wonder if it's possible to store the system as a struct of some kind,
-     with num_funcs or num_vars as global elements or something?
-=#
-
 include("utils.jl")
 using Zygote: gradient, jacobian
 
@@ -25,8 +9,8 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
 
-function estimate_gammaprob(f::Function,Z,eta,D::Integer,num_vars)
-    h(X) = f(Z + X)
+function estimate_gammaprob(func::Function,Z,eta,D::Integer,num_vars)
+    h(X) = func(Z + X)
     # compute squared norm of gradient of h at zero vector. Note: for
     # holomorphic functions (like polynomials), the Cauchy Riemann equations
     # are satisfied, so complex derviative can be written as the complex
@@ -55,21 +39,21 @@ end
 # condition number is denoted by \kappa in the papers
 # in particular, we consider the L2 norm of the matrix L(F_t, z) (defined in
 # (15) in RH1), which is the inverse of the smallest singular value of L
-function compute_condition_num(F, W_t, Z, num_funcs)
-    F_t = X -> [F[idx](W_t[idx]' * X) for idx in 1:num_funcs]
-    jac = jacobian(x -> real(F_t(x)), Z)[1] |> conj
+function compute_condition_num(system, W_t, Z, num_funcs)
+    system_t = X -> [system[idx](W_t[idx]' * X) for idx in 1:num_funcs]
+    jac = jacobian(x -> real(system_t(x)), Z)[1] |> conj
     row_norms = 1.0 ./ sqrt.(sum(abs2, jac; dims=2))
     L = jac .* row_norms
     # note that svdvals orders singular values in descending order
     return 1.0 / svdvals(L)[end]
 end
 
-function choose_timestep(F, W_t, Z, D, max_iter, num_funcs, num_vars; eps=1e-8)
+function choose_timestep(system, W_t, Z, D, max_iter, num_funcs, num_vars; eps=1e-8)
     sum_g_sq = 0.0
     for idx in 1:num_funcs
-        func = F[idx]
+        func = system[idx]
         W = W_t[idx]
         sum_g_sq += estimate_gammaprob(X -> func(W' * X),Z,eps/((num_vars-1)*max_iter),D,num_vars)^2
     end
-    return 1/(240 * compute_condition_num(F, W_t, Z, num_funcs)^2 * sqrt(sum_g_sq))
+    return 1/(240 * compute_condition_num(system, W_t, Z, num_funcs)^2 * sqrt(sum_g_sq))
 end

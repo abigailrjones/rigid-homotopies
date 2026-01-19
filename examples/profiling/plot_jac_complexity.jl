@@ -33,6 +33,6 @@ plot!(data[1:end,1], (data[1:end,1])/base^20, linestyle=:dashdot, linecolor=:bla
 plot!(data[1:end,1], ((data[1:end,1]) .^ 2)/base^20, linestyle=:dash, linecolor=:black,  label="quadratic")
 plot!(data[1:end,1], ((data[1:end,1]) .^ 3)/base^20, linestyle=:dot, linecolor=:black, label="cubic")
 
-plot(p3,p1,p2)#,title="Cost of computing derivatives")
+p = plot(p3,p1,p2)#,title="Cost of computing derivatives")
 
-# savefig(p, "deriv_complexity_waring.png")
+savefig(p, "jacobian_complexity_waring.png")

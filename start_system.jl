@@ -2,7 +2,7 @@ include("utils.jl")
 
 # input a vector containing a zero of each polynomial in the system, returns
 # the associated start system and start root
-function build_start_system(F, init_roots, num_vars)
+function build_start_system(system, init_roots, num_vars)
     V = build_random_unitary(num_vars)
     start_root = V * (init_roots[1] / sum(abs.(init_roots[1]).^2))
     start_system = [V]
@@ -17,14 +17,14 @@ end
 
 # input a system of polynomials, returns a randomly sampled start system and
 # start root
-function build_start_system(F, degrees::Vector{Int}, num_vars)
-    num_funcs = length(F)
+function build_start_system(system, degrees::Vector{Int}, num_vars)
+    num_funcs = length(system)
     start_root, null_spaces = sample_linear_intersection(num_funcs, num_vars)
     start_system = []
     for idx in 1:num_funcs
-        init_root = sample_zero_set(F[idx], num_vars, degrees[idx])
-        check_sampled_init_root(F[idx], init_root)
-        push!(start_system, map_init_to_start(F[idx], init_root, start_root,
+        init_root = sample_zero_set(system[idx], num_vars, degrees[idx])
+        check_sampled_init_root(system[idx], init_root)
+        push!(start_system, map_init_to_start(system[idx], init_root, start_root,
                                               null_spaces[idx], num_funcs,
                                               num_vars))
     end
@@ -85,29 +85,30 @@ end
 # intersect zero set of inputted polynomial with a random line, sample their
 # intersection (this yields a random initial point in the zero set of the given
 # polynomial)
-function sample_zero_set(f, num_vars, deg)
+function sample_zero_set(func, num_vars, deg)
     P = randn(ComplexF64, num_vars)
     Q = randn(ComplexF64, num_vars)
 
     local init_root
     try
-        sol, _ = newton!([1.0,1.0], X -> f(P*X[1] + Q*X[2]))
+        sol = [1.0 + 0*im, 1.0]
+        newton!(sol, X -> func(P*X[1] + Q*X[2]))
         x,y = sol
         init_root = P*x + Q*y
-        check_sampled_init_root(f, init_root)
+        check_sampled_init_root(func, init_root)
     catch e
         println("Newton ran into error... $e. Trying companion matrix...")
 
         # run companion matrix
-        coeffs = compute_deg_components(x -> f(P*x + Q), 1.0, deg)
+        coeffs = compute_deg_components(x -> func(P*x + Q), 1.0, deg)
         @assert (!isapprox(coeffs[end], 0.0, atol=TOL))
         M = diagm(-1 => ones(ComplexF64, deg-1))
         M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
         roots = eigvals(M)
         for root in roots
             init_root = P*root + Q
-            if (isapprox(f(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
-                check_sampled_init_root(f, init_root)
+            if (isapprox(func(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
+                check_sampled_init_root(func, init_root)
                 return init_root / norm(init_root)
             end
         end
@@ -125,8 +126,8 @@ end
 # FIXME (not sure I understand the intution behind this part)
 # constructs a unitary matrix that maps init_root to start_root (while also
 # satisfying a bonus tangent condition)
-function map_init_to_start(f, init_root, start_root, null_space, num_funcs, num_vars)
-    grad_f = reshape(gradient(X->real(f(X)), init_root)[1] |> conj,
+function map_init_to_start(func, init_root, start_root, null_space, num_funcs, num_vars)
+    grad_f = reshape(gradient(X->real(func(X)), init_root)[1] |> conj,
                      (1,num_vars))
     svd_res = svd(grad_f, full=true)
     # getting columns of V as rows by just taking complex conjugate of Vt
