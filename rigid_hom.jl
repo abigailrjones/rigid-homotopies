@@ -130,7 +130,8 @@ end
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         num_vars, use_heuristic, mid_print, initial_dt)
     t = 1.0
-    dt = use_heuristic ? initial_dt : choose_timestep(system, path(t), start_root,
+    shifted_system = shift(system, path(t))
+    dt = use_heuristic ? initial_dt : choose_timestep(shifted_system, start_root,
                                                       max_degree, max_iter,
                                                       num_funcs, num_vars)
     num_iter = 0.0
@@ -140,8 +141,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     root = complex(start_root)
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
-            W_0 = path(0.0)
-            target_system = X -> [system[idx](W_0[idx]' * X) for idx in 1:num_funcs]
+            target_system = shift(system, path(0.0))
             newton!(root, target_system)
 
             println("Median: $(median(step_sizes)), minimum: $(minimum(step_sizes)), maximum: $(maximum(step_sizes))")
@@ -155,10 +155,9 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                    sum(newton_iter)/length(newton_iter)
         else
             t -= dt
-            W_t = path(t)
-            system_t = X -> [system[idx](W_t[idx]' * X) for idx in 1:num_funcs]
+            shifted_system = shift(system, path(t))
             try
-                num_iter = newton!(root, system_t)
+                num_iter = newton!(root, shifted_system)
             catch e
                 if use_heuristic
                     if isa(e, ErrorException)
@@ -181,7 +180,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                 push!(newton_iter, num_iter)
                 root = scale_root(root)
                 if !use_heuristic
-                    dt = choose_timestep(system, path(t), root, max_degree,
+                    dt = choose_timestep(shifted_system, root, max_degree,
                                          max_iter, num_funcs, num_vars)
                 end
             end

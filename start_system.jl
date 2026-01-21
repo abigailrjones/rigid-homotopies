@@ -1,4 +1,5 @@
 include("utils.jl")
+using LinearAlgebra: svd, diagm, eigvals, I
 
 # input a vector containing a zero of each polynomial in the system, returns
 # the associated start system and start root

@@ -35,6 +35,10 @@ function check_inputs(num_funcs, num_vars)
     end
 end
 
+function shift(system, path_t)
+    return [X -> system[idx](path_t[idx]' * X) for idx in 1:length(system)]
+end
+
 # returns a vector with D+1 components, representing the 0:Dth degree
 # components of the given polynomial f evaluated at the input
 function compute_deg_components(func::Function,input,D::Integer)
@@ -44,7 +48,7 @@ end
 # TODO add option for additional constant arguments to func
 function build_gradient_reverse!(output, input, func)
     grad = zeros(ComplexF64, length(input))
-    output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, func, Active,
+    output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, Const(func), Active,
                               Duplicated(input, grad))[end]
     return grad
 end
