@@ -87,27 +87,25 @@ end
 # intersection (this yields a random initial point in the zero set of the given
 # polynomial)
 function sample_zero_set(func, num_vars, deg)
-    P = randn(ComplexF64, num_vars)
-    Q = randn(ComplexF64, num_vars)
+    PQ = randn(ComplexF64, num_vars, 2)
 
     local init_root
     try
         sol = [1.0 + 0*im, 1.0]
-        newton!(sol, X -> func(P*X[1] + Q*X[2]))
-        x,y = sol
-        init_root = P*x + Q*y
+        newton!(sol, [func], [PQ])
+        init_root = PQ * sol
         check_sampled_init_root(func, init_root)
     catch e
         println("Newton ran into error... $e. Trying companion matrix...")
 
         # run companion matrix
-        coeffs = compute_deg_components(x -> func(P*x + Q), 1.0, deg)
+        coeffs = compute_deg_components(x -> func(PQ * [x,1.]), 1.0, deg)
         @assert (!isapprox(coeffs[end], 0.0, atol=TOL))
         M = diagm(-1 => ones(ComplexF64, deg-1))
         M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
         roots = eigvals(M)
         for root in roots
-            init_root = P*root + Q
+            init_root = PQ * [root, 1.]
             if (isapprox(func(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
                 check_sampled_init_root(func, init_root)
                 return init_root / norm(init_root)
@@ -128,8 +126,7 @@ end
 # constructs a unitary matrix that maps init_root to start_root (while also
 # satisfying a bonus tangent condition)
 function map_init_to_start(func, init_root, start_root, null_space, num_funcs, num_vars)
-    grad_f = reshape(gradient(X->real(func(X)), init_root)[1] |> conj,
-                     (1,num_vars))
+    grad_f = reshape(build_gradient_reverse!([0.0*im], init_root, func), (1,num_vars))
     svd_res = svd(grad_f, full=true)
     # getting columns of V as rows by just taking complex conjugate of Vt
     tangent_space = conj(svd_res.Vt[2:end,:])

@@ -2,7 +2,6 @@
 using ProfileView
 
 include("../rigid_hom.jl")
-include("example_utils.jl")
 include("../utils.jl")
 
 TOL = eps()*1000
@@ -18,20 +17,20 @@ base = 2
 num_vars = 3
 degrees = [3,4]
 num_funcs = length(degrees)
-max_iter = 100#_000
-use_heuristic = false
+max_iter = 100_000#_000
+use_heuristic = true
 mid_print = true
-
 
 for i in a:b
     println(i)
     rank = base^i
-    F = build_waring_system(rank, degrees, num_vars)
+    F = build_waring_system(num_vars, degrees, rank*ones(Int,length(degrees)))
     local num_steps
     local avg_step_size
 
     @profview solve(F, num_funcs, num_vars, degrees, max_iter;
-                    use_heuristic=use_heuristic, mid_print=mid_print)
+                    use_heuristic=use_heuristic, mid_print=mid_print,
+                    initial_dt=0.001)
     #=
     try
         _, num_steps, avg_step_size = solve(F, num_funcs, num_vars, degrees,

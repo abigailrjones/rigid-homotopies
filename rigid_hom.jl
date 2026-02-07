@@ -96,14 +96,13 @@ end
 
 function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
-        mid_print::Bool, initial_dt,)
-    success, final_root, target_system, num_steps, avg_step_size,
-    avg_newton_iters = track_path(system, path, start_root, max_degree, max_iter,
-                                  num_funcs, num_vars, use_heuristic,
-                                  mid_print, initial_dt)
+        mid_print::Bool, initial_dt)
+    success, final_root, num_steps, avg_step_size, avg_newton_iters =
+    track_path(system, path, start_root, max_degree, max_iter, num_funcs,
+               num_vars, use_heuristic, mid_print, initial_dt)
     if success
         try
-            check_track_path(target_system, final_root)
+            check_track_path(system, path(0.0), final_root)
         catch
             # FIXME
             final_root, num_steps, avg_step_size = fill(NaN+NaN*im,num_vars),
@@ -112,26 +111,30 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
     else
         # TODO handle different errors
         println("Track path was unsuccessful.")
-        @assert false
     end
 
-    if (mid_print) print_output(success, target_system, final_root,
+    if (mid_print) print_output(success, system, path(0.0), final_root,
                             use_heuristic, num_steps, avg_step_size,
                         avg_newton_iters) end
+    if !success
+        @assert false
+    end
     return final_root, num_steps, avg_step_size
 end
 
 function build_path(start_system)
     # we are building the path given in section 3.4 of RH1 (see p.512)
     # (FIXME note that we don't use T, which might be an issue?)
-    return t -> [exp(t * log(mat)) for mat in start_system]
+    # taking conjugate transpose now because this is how the matrices act on
+    # the input of the polynomial system
+    return t -> [exp(t * log(mat))' for mat in start_system]
 end
 
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         num_vars, use_heuristic, mid_print, initial_dt)
     t = 1.0
-    shifted_system = shift(system, path(t))
-    dt = use_heuristic ? initial_dt : choose_timestep(shifted_system, start_root,
+    W_t = path(t)
+    dt = use_heuristic ? initial_dt : choose_timestep(system, W_t, start_root,
                                                       max_degree, max_iter,
                                                       num_funcs, num_vars)
     num_iter = 0.0
@@ -141,8 +144,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     root = complex(start_root)
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
-            target_system = shift(system, path(0.0))
-            newton!(root, target_system)
+            newton!(root, system, path(0.0))
 
             println("Median: $(median(step_sizes)), minimum: $(minimum(step_sizes)), maximum: $(maximum(step_sizes))")
             #=
@@ -150,14 +152,14 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             return true, NaN, [], iter-1, sum(step_sizes)/length(step_sizes),NaN
                    #sum(newton_iter)/length(newton_iter)
             =#
-            return true, scale_root(root), target_system, iter-1,
+            return true, scale_root(root), iter-1,
                    sum(step_sizes)/length(step_sizes),
                    sum(newton_iter)/length(newton_iter)
         else
             t -= dt
-            shifted_system = shift(system, path(t))
+            W_t = path(t)
             try
-                num_iter = newton!(root, shifted_system)
+                num_iter = newton!(root, system, W_t)
             catch e
                 if use_heuristic
                     if isa(e, ErrorException)
@@ -180,7 +182,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                 push!(newton_iter, num_iter)
                 root = scale_root(root)
                 if !use_heuristic
-                    dt = choose_timestep(shifted_system, root, max_degree,
+                    dt = choose_timestep(system, W_t, root, max_degree,
                                          max_iter, num_funcs, num_vars)
                 end
             end
@@ -192,6 +194,6 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         end
     end
 
-    return false, NaN, [], max_iter, sum(step_sizes)/length(step_sizes),
+    return false, NaN, max_iter, sum(step_sizes)/length(step_sizes),
            sum(newton_iter)/length(newton_iter)
 end

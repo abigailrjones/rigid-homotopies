@@ -1,5 +1,5 @@
 include("utils.jl")
-using Zygote: gradient, jacobian
+using LinearAlgebra: svdvals
 
 # Note to self: verified real version via plotting
 function sample_unit_ball(dim::Integer, num_pts::Integer)
@@ -9,13 +9,8 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
 
-function estimate_gammaprob(func::Function,grad_at_Z,eta,D::Integer,num_vars)
-    # compute squared norm of gradient of h at zero vector. Note: for
-    # holomorphic functions (like polynomials), the Cauchy Riemann equations
-    # are satisfied, so complex derviative can be written as the complex
-    # conjugate of the gradient of the real part (see Zygote ``Complex
-    # Differentiation" documentation for more details)
-    d0h_sq_norm = sum(abs.(grad_at_Z).^2)
+function estimate_gammaprob(func::Function,grad_at_input,eta,D::Integer,num_vars)
+    d0h_sq_norm = sum(abs.(grad_at_input).^2)
     s = ceil(Int64, 1 + log(2, D/eta))
     rand_w = sample_unit_ball(num_vars, s)
     sum_squared_components = zeros(D+1)
@@ -45,13 +40,13 @@ function compute_condition_num(jac)
     return 1.0 / svdvals(L)[end]
 end
 
-function choose_timestep(shifted_system, Z, D, max_iter, num_funcs, num_vars; eps=1e-8)
+function choose_timestep(system, W_t, input, D, max_iter, num_funcs, num_vars; eps=1e-8)
     sum_g_sq = 0.0
-    jac, _ = build_jacobian_reverse(input, shifted_system)
+    jac, _ = build_jacobian_reverse(input, system, W_t)
     for idx in 1:num_funcs
-        func = shifted_system[idx]
-        grad_at_Z = jac[idx,1:end]
-        sum_g_sq += estimate_gammaprob(X->func(Z + X),grad_at_Z,eps/((num_vars-1)*max_iter),D,num_vars)^2
+        func = X -> system[idx](W_t[idx] * (X + input))
+        grad_at_input = jac[idx,:]
+        sum_g_sq += estimate_gammaprob(func,grad_at_input,eps/((num_vars-1)*max_iter),D,num_vars)^2
     end
     return 1/(240 * compute_condition_num(jac)^2 * sqrt(sum_g_sq))
 end

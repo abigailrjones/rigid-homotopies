@@ -27,16 +27,20 @@ function (poly::WaringPoly)(X)::ComplexF64
     return res
 end
 
+function build_waring_system(num_vars, degrees, ranks)
+    system = [WaringPoly(num_vars, degrees[1], ranks[1])]
+    for idx in 2:length(degrees)
+        push!(system, WaringPoly(num_vars, degrees[idx], ranks[idx]))
+    end
+    return system
+end
+
 ##############################################
 
 function check_inputs(num_funcs, num_vars)
     if (num_funcs != num_vars-1)
         throw(ErrorException("Number of functions must equal number of non-homogeneous variables."))
     end
-end
-
-function shift(system, path_t)
-    return [X -> system[idx](path_t[idx]' * X) for idx in 1:length(system)]
 end
 
 # returns a vector with D+1 components, representing the 0:Dth degree
@@ -53,6 +57,16 @@ function build_gradient_reverse!(output, input, func)
     return grad
 end
 
+# TODO add option for additional constant arguments to func
+function build_gradient_reverse!(output, input, func, mat)
+    shifted_input = mat * input
+    grad = zeros(ComplexF64, length(shifted_input))
+    output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, Const(func), Active,
+                              Duplicated(shifted_input, grad))[end]
+    # transpose(conjugate transpose) = conjugate
+    return transpose(mat) * grad
+end
+
 #=
 # TODO can we just have one allocation for jac the whole time and pass it in?
 function build_jacobian_reverse!(jac, output, input, system, num_vars)
@@ -63,18 +77,25 @@ function build_jacobian_reverse!(jac, output, input, system, num_vars)
     return
 =#
 
-function build_jacobian_reverse(input, system)
+function build_jacobian_reverse(input, system, matrices=nothing)
     # note that length(input) == num_vars
     jac = zeros(ComplexF64, length(system), length(input))
     output = zeros(ComplexF64, length(system))
-    for idx in 1:length(system)
-        view(jac,idx,:) .= build_gradient_reverse!(view(output,idx), input,
-                                                   system[idx])
+    if matrices == nothing
+        for idx in 1:length(system)
+            view(jac,idx,:) .= build_gradient_reverse!(view(output,idx), input,
+                                                       system[idx])
+        end
+    else
+        for idx in 1:length(system)
+            view(jac,idx,:) .= build_gradient_reverse!(view(output,idx), input,
+                                                       system[idx], matrices[idx])
+        end
     end
     return jac, output
 end
 
-function newton!(guess::Vector{ComplexF64}, system; max_iter=1000, tol=eps()*100)::Int
+function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps()*100)::Int
     # TODO eventually want to handle error cases so they return negative
     # integers instead of errors to reduce need for runtime work)
     # TODO is declaring return type as Int fine? (Or is Int too vague or too specific?)
@@ -91,7 +112,7 @@ function newton!(guess::Vector{ComplexF64}, system; max_iter=1000, tol=eps()*100
         if (num_small > magic) & isapprox(residual, 0.0, atol=tol)
             return num_iter
         else
-            jac, output = build_jacobian_reverse(guess, system)
+            jac, output = build_jacobian_reverse(guess, system, matrices)
             inc .= (pinv(jac) * output)
             guess .-= inc
             residual = norm(output)
@@ -131,7 +152,7 @@ end
 function print_input()
 end
 
-function print_output(success, target_system, final_root, use_heuristic,
+function print_output(success, system, W_0, final_root, use_heuristic,
                       num_steps, avg_step_size, avg_newton_iters)
     println("")
     println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
@@ -146,7 +167,8 @@ function print_output(success, target_system, final_root, use_heuristic,
     if success
         println("Final root: $(round.(final_root; digits=8))")
         # println("System residuals: $(round.(target_system(final_root); digits=20))")
-        println("System residuals: $(target_system(final_root))")
+        println("System residuals: $([system[idx](W_0[idx] * final_root) for
+                                      idx in 1:length(system)])")
     end
     return
 end
@@ -188,12 +210,14 @@ function check_build_path(path, start_system, num_vars)
     W_1 = path(1.0)
     for idx in 1:length(W_0)
         @assert isapprox(W_0[idx]-I, zeros(num_vars,num_vars), atol=TOL)
-        @assert isapprox(W_1[idx]-start_system[idx], zeros(num_vars,num_vars), atol=TOL)
+        @assert isapprox(W_1[idx]'-start_system[idx], zeros(num_vars,num_vars), atol=TOL)
     end
     return
 end
 
-function check_track_path(target_system, final_root)
-    @assert isapprox(target_system(final_root), zeros(num_funcs,), atol=TOL)
+function check_track_path(system, W_0, final_root)
+    for idx in 1:length(system)
+        @assert isapprox(system[idx](W_0[idx] * final_root), 0.0, atol=TOL)
+    end
     return
 end
