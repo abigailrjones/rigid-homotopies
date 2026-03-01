@@ -108,12 +108,15 @@ end
 
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         num_vars, use_heuristic, mid_print, initial_dt)
+    if use_heuristic
+        println("Heuristic timestepping is not currently supported.")
+        @assert false
+    end
+
     t = 1.0
     W_t = path(t)
-    dt = use_heuristic ? initial_dt : choose_timestep(system, W_t, start_root,
-                                                      max_degree, max_iter,
-                                                      num_funcs, num_vars)
-    num_newton_iter = 0
+    dt = choose_timestep(system, W_t, start_root, max_degree, max_iter,
+                         num_funcs, num_vars)
     prog_data = [1.0, 0.0, 0.0, 0.0]
     #         = [min dt, max dt, avg dt, avg newton iter]
 
@@ -122,48 +125,42 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
             # refine root
             newton!(root, system, path(0.0))
+            scale_root!(root)
+
             println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
 
-            return true, scale_root(root), iter-1,
-                   prog_data[3], prog_data[4]
+            return true, root, iter-1, prog_data[3], prog_data[4]
         else
             t -= dt
             W_t = path(t)
-            try
-                num_newton_iter = newton!(root, system, W_t)
-            catch e
-                if use_heuristic
-                    if isa(e, ErrorException)
-                        println(e)
-                        t += dt
-                        dt *= 0.5
-                    else
-                        println("A different error occurred: $e.")
-                        throw(e)
-                    end
-                else
-                    if (mid_print) println("Using the proven timestep, Newton's \
-                                           method failed with error $e after \
-                                           $iter iterations.") end
-                    # throw(e)
-                    break
-                end
-            else
-                # update min, max, and average timestep data
-                if (dt < prog_data[1]) prog_data[1] = dt end
-                if (dt > prog_data[2]) prog_data[2] = dt end
-                prog_data[3] = prog_data[3] + (dt - prog_data[3])/iter
-                # update average newton iteration data
-                prog_data[4] = prog_data[4] + (num_newton_iter - prog_data[4])/iter
-                root = scale_root(root)
-                # compute timestep for next step
-                if !use_heuristic
-                    dt = choose_timestep(system, W_t, root, max_degree,
-                                         max_iter, num_funcs, num_vars)
-                end
-            end
+            step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+            # compute timestep for next step
+            dt = choose_timestep(system, W_t, root, max_degree, max_iter,
+                                 num_funcs, num_vars)
         end
     end
-
     return false, NaN, max_iter, prog_data[3], prog_data[4]
+end
+
+# changes root and prog_data in place
+function step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+    num_newton_iter = 0
+
+    try
+        num_newton_iter = newton!(root, system, W_t)
+        scale_root!(root)
+    catch e
+        if (mid_print) println("Using the proven timestep, Newton's \
+                               method failed with error $e after \
+                               $iter iterations.")
+        end
+        throw(e)
+    else
+        # update min, max, and average timestep data
+        if (dt < prog_data[1]) prog_data[1] = dt end
+        if (dt > prog_data[2]) prog_data[2] = dt end
+        prog_data[3] = prog_data[3] + (dt - prog_data[3])/iter
+        # update average newton iteration data
+        prog_data[4] = prog_data[4] + (num_newton_iter - prog_data[4])/iter
+    end
 end

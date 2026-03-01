@@ -141,12 +141,11 @@ function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1
     end
 end
 
-function scale_root(x)
-    max_idx = argmax(abs.(x))
-    if abs(x[max_idx]) >= CUT_OFF
-        x = x ./ x[max_idx]
+function scale_root!(x)
+    max_elt = maximum(abs.(x))
+    if max_elt >= CUT_OFF
+        x ./= max_elt
     end
-    return x
 end
 
 # TODO
