@@ -113,29 +113,24 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     dt = use_heuristic ? initial_dt : choose_timestep(system, W_t, start_root,
                                                       max_degree, max_iter,
                                                       num_funcs, num_vars)
-    num_iter = 0.0
-    step_sizes = []
-    newton_iter = []
+    num_newton_iter = 0
+    prog_data = [1.0, 0.0, 0.0, 0.0]
+    #         = [min dt, max dt, avg dt, avg newton iter]
 
     root = complex(start_root)
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
+            # refine root
             newton!(root, system, path(0.0))
+            println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
 
-            println("Median: $(median(step_sizes)), minimum: $(minimum(step_sizes)), maximum: $(maximum(step_sizes))")
-            #=
-            println("Number of iterations: $(iter-1)")
-            return true, NaN, [], iter-1, sum(step_sizes)/length(step_sizes),NaN
-                   #sum(newton_iter)/length(newton_iter)
-            =#
             return true, scale_root(root), iter-1,
-                   sum(step_sizes)/length(step_sizes),
-                   sum(newton_iter)/length(newton_iter)
+                   prog_data[3], prog_data[4]
         else
             t -= dt
             W_t = path(t)
             try
-                num_iter = newton!(root, system, W_t)
+                num_newton_iter = newton!(root, system, W_t)
             catch e
                 if use_heuristic
                     if isa(e, ErrorException)
@@ -154,22 +149,21 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                     break
                 end
             else
-                push!(step_sizes, dt)
-                push!(newton_iter, num_iter)
+                # update min, max, and average timestep data
+                if (dt < prog_data[1]) prog_data[1] = dt end
+                if (dt > prog_data[2]) prog_data[2] = dt end
+                prog_data[3] = prog_data[3] + (dt - prog_data[3])/iter
+                # update average newton iteration data
+                prog_data[4] = prog_data[4] + (num_newton_iter - prog_data[4])/iter
                 root = scale_root(root)
+                # compute timestep for next step
                 if !use_heuristic
                     dt = choose_timestep(system, W_t, root, max_degree,
                                          max_iter, num_funcs, num_vars)
                 end
             end
-            #=
-            push!(step_sizes, dt)
-            dt = choose_timestep(system, path(t), start_root, max_degree, max_iter,
-                                 num_funcs, num_vars)
-            =#
         end
     end
 
-    return false, NaN, max_iter, sum(step_sizes)/length(step_sizes),
-           sum(newton_iter)/length(newton_iter)
+    return false, NaN, max_iter, prog_data[3], prog_data[4]
 end

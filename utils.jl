@@ -171,8 +171,6 @@ function print_output(success, system, W_0, final_root, use_heuristic,
         # println("System residuals: $(round.(target_system(final_root); digits=20))")
         println("System residuals: $([system[idx](W_0[idx] * final_root) for
                                       idx in 1:length(system)])")
-        println("System residuals (unshifted): $([system[idx](final_root) for
-                                      idx in 1:length(system)])")
     end
     return
 end
