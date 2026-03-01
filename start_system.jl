@@ -48,8 +48,6 @@ function build_unitary(moved_root, fixed_root, num_vars)
     return svd_res.U * svd_res.Vt
 end
 
-# FIXME (not sure I understand the intution behind this part)
-# sample an intersection of linear forms to build random start_root
 function sample_linear_intersection(num_funcs, num_vars)
     null_spaces = []
     union_orthog_comp = zeros(ComplexF64, (num_funcs,num_vars))
@@ -72,12 +70,6 @@ function sample_linear_intersection(num_funcs, num_vars)
     r = length(svd_res.S)
     random_coeffs = randn(ComplexF64, (1,num_rows-r))
     start_root = random_coeffs * conj(svd_res.Vt[(r+1):end,:])
-    # FIXME FIXME FIXME
-    # println("orthog comp:", union_orthog_comp)
-    # println("SVD:", svd_res)
-    # println("r:",r)
-    # println("Vt:",svd_res.Vt[(r+1):end,:])
-    # println("Start root:", start_root)
     @assert (!isapprox(start_root, zeros(1,num_vars), atol=TOL))
 
     return reshape(start_root / norm(start_root), num_vars), null_spaces
@@ -97,9 +89,9 @@ function sample_zero_set(func, num_vars, deg)
         check_sampled_init_root(func, init_root)
     catch e
         println("Newton ran into error... $e. Trying companion matrix...")
-
         # run companion matrix
-        coeffs = compute_deg_components(x -> func(PQ * [x,1.]), 1.0, deg)
+        coeffs = zeros(ComplexF64,deg+1)
+        compute_deg_components!(coeffs, x -> func(PQ * [x,1.0+0*im]), 1.0+0*im, deg)
         @assert (!isapprox(coeffs[end], 0.0, atol=TOL))
         M = diagm(-1 => ones(ComplexF64, deg-1))
         M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
@@ -109,22 +101,17 @@ function sample_zero_set(func, num_vars, deg)
             if (isapprox(func(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
                 check_sampled_init_root(func, init_root)
                 return init_root / norm(init_root)
+            else
+                println(func(init_root))
+                println(norm(init_root))
             end
         end
     else
         return init_root / norm(init_root)
     end
-    # TODO TODO TODO is the scaling throw things off? This last failure had the
-    # assert triggered in build_start_system, not here
-
-    # FIXME what if init_root has norm zero?
-    # return init_root / norm(init_root)
     throw(ErrorException("Failed to sample an initial zero."))
 end
 
-# FIXME (not sure I understand the intution behind this part)
-# constructs a unitary matrix that maps init_root to start_root (while also
-# satisfying a bonus tangent condition)
 function map_init_to_start(func, init_root, start_root, null_space, num_funcs, num_vars)
     grad_f = reshape(build_gradient_reverse!([0.0*im], init_root, func), (1,num_vars))
     svd_res = svd(grad_f, full=true)
@@ -135,14 +122,6 @@ function map_init_to_start(func, init_root, start_root, null_space, num_funcs, n
     # (tangent space is a matrix with dims (num_vars-1) x num_vars, and init
     # root is a vector with dims num_vars x 1)
     alpha = conj(tangent_space) * init_root
-    if (!isapprox(transpose(tangent_space)*alpha - init_root,
-                  zeros(num_vars,1), atol=TOL))
-        # FIXME FIXME
-        #=
-        println()
-        println("***Failed assert 1:",transpose(tangent_space)*alpha - init_root)
-        =#
-    end
     @assert isapprox(transpose(tangent_space)*alpha - init_root,
                      zeros(num_vars,1), atol=TOL)
 
@@ -151,14 +130,6 @@ function map_init_to_start(func, init_root, start_root, null_space, num_funcs, n
     # (null space is a matrix with dims (num_vars-1) x num_vars, and start root
     # is a vector with dims num_vars x 1)
     beta = conj(null_space) * start_root
-    if (!isapprox(transpose(null_space)*beta - start_root, zeros(num_vars,1),
-                  atol=TOL))
-        # FIXME FIXME
-        #=
-        println()
-        println("***Failed assert 2:",transpose(null_space)*beta - start_root)
-        =#
-    end
     @assert isapprox(transpose(null_space)*beta - start_root,
                      zeros(num_vars,1), atol=TOL)
 
@@ -174,13 +145,5 @@ function map_init_to_start(func, init_root, start_root, null_space, num_funcs, n
                      atol=TOL)
 
     @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
-    if (!isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL))
-        # FIXME FIXME
-        #=
-        println()
-        println("***Failed assert 3:", res * init_root - start_root)
-        =#
-        # @assert false
-    end
     return res
 end

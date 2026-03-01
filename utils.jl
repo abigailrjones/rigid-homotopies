@@ -1,4 +1,4 @@
-using FFTW: fft
+using FFTW: fft!
 using Enzyme
 using LinearAlgebra: pinv, norm
 
@@ -6,23 +6,22 @@ CUT_OFF = 5.0
 
 ##############################################
 
-# TODO WaringPoly types must be constant for Enzyme to not throw a fit
-# TODO move this little section to example_utils.jl?
-
 struct WaringPoly
     num_vars::Int
     deg::Int
     rank::Int
-    # can we include that M is a num_vars x rank dimensioned array?
+    # can we include that M is a (rank x num_vars) dimensioned array?
     M::Array{ComplexF64}
 end
 
-WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,num_vars,rank))
+# WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,num_vars,rank))
+WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,rank,num_vars))
 
 function (poly::WaringPoly)(X)::ComplexF64
+    # return sum((poly.M * X).^poly.deg)
     res = 0.0 + 0*im
     for idx in 1:poly.rank
-        res += sum(poly.M[:,idx] .* X)^poly.deg
+        res += sum(poly.M[idx,:] .* X)^poly.deg
     end
     return res
 end
@@ -45,8 +44,24 @@ end
 
 # returns a vector with D+1 components, representing the 0:Dth degree
 # components of the given polynomial f evaluated at the input
-function compute_deg_components(func::Function,input,D::Integer)
-    return fft([func(exp(2*pi*im*j/(D+1))*input) for j in 0:D]) / (D+1)
+function compute_deg_components!(component_array,func,input::ComplexF64,D::Integer)
+    for idx in 0:D
+        component_array[idx+1] = func(input)
+        input *= exp(2*pi*im/(D+1))
+    end
+    fft!(component_array)
+    return
+end
+
+function compute_deg_components!(component_array,func,input::Vector{ComplexF64},D::Integer)
+    # return fft([func(exp(2*pi*im*j/(D+1))*input) for j in 0:D]) / (D+1)
+    for idx in 0:D
+        # component_array[idx+1] = func(exp(2*pi*im*idx/(D+1))*input)
+        component_array[idx+1] = func(input)
+        input .*= exp(2*pi*im/(D+1))
+    end
+    fft!(component_array)
+    return
 end
 
 # TODO add option for additional constant arguments to func
@@ -67,16 +82,6 @@ function build_gradient_reverse!(output, input, func, mat)
     return transpose(mat) * grad
 end
 
-#=
-# TODO can we just have one allocation for jac the whole time and pass it in?
-function build_jacobian_reverse!(jac, output, input, system, num_vars)
-    for idx in 1:length(system)
-        view(jac,idx,:) .= build_gradient_reverse!(view(output,idx), input,
-                                                   system[idx], num_vars)
-    end
-    return
-=#
-
 function build_jacobian_reverse(input, system, matrices=nothing)
     # note that length(input) == num_vars
     jac = zeros(ComplexF64, length(system), length(input))
@@ -96,10 +101,6 @@ function build_jacobian_reverse(input, system, matrices=nothing)
 end
 
 function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps()*100)::Int
-    # TODO eventually want to handle error cases so they return negative
-    # integers instead of errors to reduce need for runtime work)
-    # TODO is declaring return type as Int fine? (Or is Int too vague or too specific?)
-
     inc = Vector{ComplexF64}(undef, length(guess))
     residual = 1.0
     err = 1.0
@@ -166,8 +167,11 @@ function print_output(success, system, W_0, final_root, use_heuristic,
     println("")
     if success
         println("Final root: $(round.(final_root; digits=8))")
+        println("Final root (unrounded): $final_root")
         # println("System residuals: $(round.(target_system(final_root); digits=20))")
         println("System residuals: $([system[idx](W_0[idx] * final_root) for
+                                      idx in 1:length(system)])")
+        println("System residuals (unshifted): $([system[idx](final_root) for
                                       idx in 1:length(system)])")
     end
     return
@@ -182,12 +186,12 @@ end
 
 function check_sampled_init_root(func, init_root)
     if (!isapprox(func(init_root), 0.0, atol=TOL))
-        println(func(init_root))
+        println("Not close enough to zero pre-scaling: $(func(init_root))")
     end
     @assert isapprox(func(init_root), 0.0, atol=TOL)
     if (!isapprox(func(init_root/norm(init_root)), 0.0, atol=TOL))
-        println(norm(init_root))
-        println(func(init_root/norm(init_root)))
+        println("Norm of proposed zero: $(norm(init_root))")
+        println("Evaluation post-scaling (not close enough to zero): $(func(init_root/norm(init_root)))")
     end
     @assert isapprox(func(init_root/norm(init_root)), 0.0, atol=TOL)
 end

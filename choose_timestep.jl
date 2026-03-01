@@ -10,14 +10,20 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
 end
 
 function estimate_gammaprob(func::Function,grad_at_input,eta,D::Integer,num_vars)
-    d0h_sq_norm = sum(abs.(grad_at_input).^2)
+    d0h_sq_norm = 0.0
+    for elt in grad_at_input
+        d0h_sq_norm += abs(elt)^2
+    end
     s = ceil(Int64, 1 + log(2, D/eta))
     rand_w = sample_unit_ball(num_vars, s)
     sum_squared_components = zeros(D+1)
+    deg_components = zeros(ComplexF64,D+1)
     for w in rand_w
         # compute each degree component of h evaluated at w, square elementwise
         # and add to sum
-        sum_squared_components += abs.(compute_deg_components(func,w,D)).^2
+        compute_deg_components!(deg_components,func,w,D)
+        sum_squared_components .+= abs.(deg_components).^2 ./ (D+1)
+        # sum_squared_components += abs.(compute_deg_components(func,w,D)).^2
     end
     return_est = 0
     fac = k -> binomial(num_vars+k, k)/d0h_sq_norm/s

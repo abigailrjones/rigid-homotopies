@@ -1,5 +1,4 @@
 using Statistics
-# using LinearAlgebra
 
 # TODO I should figure out how julia handles includes (since I am including
 # utils in start_system)
@@ -7,27 +6,6 @@ include("utils.jl")
 include("start_system.jl")
 include("choose_timestep.jl")
 
-# all functions are passed in with a vector input; the maximum number of
-# variables is stored in num_vars, but this is not necessarily the number of
-# vars in each function
-# max_degree is the highest degree term that appears in the entire system
-# we assume that all functions passed in F are holomorphic (really I'm assuming
-# polynomial, but I don't think the code currently requires anything beyond
-# holomorphic)
-# in order to set up the start system, we also require that all polynomials in
-# the system be homogeneous
-#
-# FIXME do num_funcs and num_vars need to be passed in?
-# TODO write a little about:
-# - complex differentation
-# - isapprox definition and choices for atol and rtol (using only atol since
-#   we're near zero, but needing to set TOL to be slightly higher than machine
-#   precision in order to make things work out nicely)
-# - make sure to append ! to function names that edit inputs
-# - add options for predictor-corrector
-# - comparing heuristic and paper with same inputs
-
-# FIXME making this a global variable is perhaps a bit lazy/hacky?
 TOL = eps()*100
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
@@ -104,7 +82,6 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
         try
             check_track_path(system, path(0.0), final_root)
         catch
-            # FIXME
             final_root, num_steps, avg_step_size = fill(NaN+NaN*im,num_vars),
                                                    NaN, NaN
         end
@@ -124,7 +101,6 @@ end
 
 function build_path(start_system)
     # we are building the path given in section 3.4 of RH1 (see p.512)
-    # (FIXME note that we don't use T, which might be an issue?)
     # taking conjugate transpose now because this is how the matrices act on
     # the input of the polynomial system
     return t -> [exp(t * log(mat))' for mat in start_system]
