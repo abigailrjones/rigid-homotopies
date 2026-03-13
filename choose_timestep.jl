@@ -9,7 +9,8 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
 
-function estimate_gammaprob(func::Function,grad_at_input,eta,D::Integer,num_vars)
+function estimate_gammaprob(func::Function,grad_at_input,eta,DD::Integer,num_vars)
+    D = DD==1 ? 2 : 2^ceil(Int64, log2(DD))
     d0h_sq_norm = 0.0
     for elt in grad_at_input
         d0h_sq_norm += abs(elt)^2

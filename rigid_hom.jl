@@ -76,8 +76,12 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
         max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
         mid_print::Bool, initial_dt)
     success, final_root, num_steps, avg_step_size, avg_newton_iters =
-    track_path(system, path, start_root, max_degree, max_iter, num_funcs,
-               num_vars, use_heuristic, mid_print, initial_dt)
+    use_heuristic ? track_path_heuristic(system, path, start_root, max_degree,
+                                         max_iter, num_funcs, num_vars,
+                                         mid_print, initial_dt) :
+                    track_path(system, path, start_root, max_degree, max_iter,
+                               num_funcs, num_vars, mid_print)
+
     if success
         try
             check_track_path(system, path(0.0), final_root)
@@ -106,13 +110,45 @@ function build_path(start_system)
     return t -> [exp(t * log(mat))' for mat in start_system]
 end
 
-function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
-        num_vars, use_heuristic, mid_print, initial_dt)
-    if use_heuristic
-        println("Heuristic timestepping is not currently supported.")
-        @assert false
-    end
+function track_path_heuristic(system, path, start_root, max_degree, max_iter,
+        num_funcs, num_vars, mid_print, initial_dt)
+    t = 1.0
+    W_t = path(t)
+    dt = initial_dt
+    prog_data = [1.0, 0.0, 0.0, 0.0]
+    #         = [min dt, max dt, avg dt, avg newton iter]
 
+    root = complex(copy(start_root))
+    iter = 0
+    while iter<max_iter
+        iter += 1
+        if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
+            # refine root
+            newton!(root, system, path(0.0))
+            scale_root!(root)
+
+            if mid_print
+                println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
+            end
+            return true, root, iter-1, prog_data[3], prog_data[4]
+        else
+            t -= dt
+            W_t = path(t)
+            try
+                step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+            catch e
+                println(e)
+                t += dt
+                dt *= 0.5
+                iter -= 1
+            end
+        end
+    end
+    return false, NaN, max_iter, prog_data[3], prog_data[4]
+end
+
+function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
+        num_vars, mid_print)
     t = 1.0
     W_t = path(t)
     dt = choose_timestep(system, W_t, start_root, max_degree, max_iter,
@@ -120,15 +156,16 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     prog_data = [1.0, 0.0, 0.0, 0.0]
     #         = [min dt, max dt, avg dt, avg newton iter]
 
-    root = complex(start_root)
+    root = complex(copy(start_root))
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
             # refine root
             newton!(root, system, path(0.0))
             scale_root!(root)
 
-            println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
-
+            if mid_print
+                println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
+            end
             return true, root, iter-1, prog_data[3], prog_data[4]
         else
             t -= dt
@@ -150,8 +187,7 @@ function step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
         num_newton_iter = newton!(root, system, W_t)
         scale_root!(root)
     catch e
-        if (mid_print) println("Using the proven timestep, Newton's \
-                               method failed with error $e after \
+        if (mid_print) println("Newton's method failed with error $e after \
                                $iter iterations.")
         end
         throw(e)
