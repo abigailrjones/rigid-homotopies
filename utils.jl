@@ -100,7 +100,7 @@ function build_jacobian_reverse(input, system, matrices=nothing)
     return jac, output
 end
 
-function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps()*100)::Int
+function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps(Float64)^0.75)::Int
     inc = Vector{ComplexF64}(undef, length(guess))
     residual = 1.0
     err = 1.0
@@ -176,21 +176,21 @@ end
 
 function check_init_roots(system, init_roots, num_vars)
     for idx in 1:length(system)
-        @assert isapprox(system[idx](init_roots[idx]), 0.0, atol=TOL)
+        @assert isapprox(system[idx](init_roots[idx]), 0.0, atol=eps(Float64)^0.75)
         @assert (length(init_roots[idx]) == num_vars)
     end
 end
 
 function check_sampled_init_root(func, init_root)
-    if (!isapprox(func(init_root), 0.0, atol=TOL))
+    if (!isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75))
         println("Not close enough to zero pre-scaling: $(func(init_root))")
     end
-    @assert isapprox(func(init_root), 0.0, atol=TOL)
-    if (!isapprox(func(init_root/norm(init_root)), 0.0, atol=TOL))
+    @assert isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75)
+    if (!isapprox(func(init_root/norm(init_root)), 0.0, atol=eps(Float64)^0.75))
         println("Norm of proposed zero: $(norm(init_root))")
         println("Evaluation post-scaling (not close enough to zero): $(func(init_root/norm(init_root)))")
     end
-    @assert isapprox(func(init_root/norm(init_root)), 0.0, atol=TOL)
+    @assert isapprox(func(init_root/norm(init_root)), 0.0, atol=eps(Float64)^0.75)
 end
 
 # build_start_system will only work as expected if inputted polynomials are
@@ -201,7 +201,7 @@ function check_build_start_system(system, start_system, start_root, num_funcs)
     for idx in 1:num_funcs
         func = system[idx]
         U = start_system[idx]
-        @assert isapprox(func(U' * start_root), 0.0, atol=TOL)
+        @assert isapprox(func(U' * start_root), 0.0, atol=eps(Float64)^0.75)
     end
     return
 end
@@ -210,15 +210,15 @@ function check_build_path(path, start_system, num_vars)
     W_0 = path(0.0)
     W_1 = path(1.0)
     for idx in 1:length(W_0)
-        @assert isapprox(W_0[idx]-I, zeros(num_vars,num_vars), atol=TOL)
-        @assert isapprox(W_1[idx]'-start_system[idx], zeros(num_vars,num_vars), atol=TOL)
+        @assert isapprox(W_0[idx]-I, zeros(num_vars,num_vars), atol=eps(Float64)^0.75)
+        @assert isapprox(W_1[idx]'-start_system[idx], zeros(num_vars,num_vars), atol=eps(Float64)^0.75)
     end
     return
 end
 
 function check_track_path(system, W_0, final_root)
     for idx in 1:length(system)
-        @assert isapprox(system[idx](W_0[idx] * final_root), 0.0, atol=TOL)
+        @assert isapprox(system[idx](W_0[idx] * final_root), 0.0, atol=eps(Float64)^0.75)
     end
     return
 end

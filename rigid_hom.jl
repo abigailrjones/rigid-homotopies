@@ -6,8 +6,6 @@ include("utils.jl")
 include("start_system.jl")
 include("choose_timestep.jl")
 
-TOL = eps()*100
-
 function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path;
         use_heuristic::Bool=false, mid_print::Bool=false,
@@ -122,7 +120,7 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
     iter = 0
     while iter<max_iter
         iter += 1
-        if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
+        if isapprox(t, 0.0, atol=eps(Float64)^0.75) || (t < 0.0)
             # refine root
             newton!(root, system, path(0.0))
             scale_root!(root)
@@ -158,7 +156,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
 
     root = complex(copy(start_root))
     for iter in 1:max_iter
-        if isapprox(t, 0.0, atol=TOL) || (t < 0.0)
+        if isapprox(t, 0.0, atol=eps(Float64)^0.75) || (t < 0.0)
             # refine root
             newton!(root, system, path(0.0))
             scale_root!(root)

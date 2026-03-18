@@ -41,7 +41,7 @@ end
 # constructs a unitary matrix that maps moved_root to fixed_root using svd
 # (balanced Procrustes problem)
 function build_unitary(moved_root, fixed_root, num_vars)
-    if isapprox(moved_root, fixed_root, atol=TOL)
+    if isapprox(moved_root, fixed_root, atol=eps(Float64)^0.75)
         return Matrix(1.0*I,num_vars,num_vars)
     end
     svd_res = svd(fixed_root * moved_root')
@@ -70,7 +70,7 @@ function sample_linear_intersection(num_funcs, num_vars)
     r = length(svd_res.S)
     random_coeffs = randn(ComplexF64, (1,num_rows-r))
     start_root = random_coeffs * conj(svd_res.Vt[(r+1):end,:])
-    @assert (!isapprox(start_root, zeros(1,num_vars), atol=TOL))
+    @assert (!isapprox(start_root, zeros(1,num_vars), atol=eps(Float64)^0.75))
 
     return reshape(start_root / norm(start_root), num_vars), null_spaces
 end
@@ -92,18 +92,20 @@ function sample_zero_set(func, num_vars, deg)
         # run companion matrix
         coeffs = zeros(ComplexF64,deg+1)
         compute_deg_components!(coeffs, x -> func(PQ * [x,1.0+0*im]), 1.0+0*im, deg)
-        @assert (!isapprox(coeffs[end], 0.0, atol=TOL))
+        @assert (!isapprox(coeffs[end], 0.0, atol=eps(Float64)^0.75))
         M = diagm(-1 => ones(ComplexF64, deg-1))
         M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
         roots = eigvals(M)
         for root in roots
             init_root = PQ * [root, 1.]
-            if (isapprox(func(init_root), 0.0, atol=TOL) & (norm(init_root) >= 1))
+            if (isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75) & (norm(init_root) >= 1))
                 check_sampled_init_root(func, init_root)
                 return init_root / norm(init_root)
+            #=
             else
                 println(func(init_root))
                 println(norm(init_root))
+            =#
             end
         end
     else
@@ -123,7 +125,7 @@ function map_init_to_start(func, init_root, start_root, null_space, num_funcs, n
     # root is a vector with dims num_vars x 1)
     alpha = conj(tangent_space) * init_root
     @assert isapprox(transpose(tangent_space)*alpha - init_root,
-                     zeros(num_vars,1), atol=TOL)
+                     zeros(num_vars,1), atol=eps(Float64)^0.75)
 
     # write start_root in terms of basis for null space (computed in
     # sample_linear_intersection)
@@ -131,19 +133,19 @@ function map_init_to_start(func, init_root, start_root, null_space, num_funcs, n
     # is a vector with dims num_vars x 1)
     beta = conj(null_space) * start_root
     @assert isapprox(transpose(null_space)*beta - start_root,
-                     zeros(num_vars,1), atol=TOL)
+                     zeros(num_vars,1), atol=eps(Float64)^0.75)
 
     # compute matrix Gamma such that Gamma alpha = beta
     svd_res = svd(beta * alpha')
     Gamma = svd_res.U * svd_res.Vt
-    @assert isapprox(Gamma * alpha - beta, zeros(num_vars-1,1), atol=TOL)
+    @assert isapprox(Gamma * alpha - beta, zeros(num_vars-1,1), atol=eps(Float64)^0.75)
 
     svd_res = svd(transpose(null_space) * Gamma * conj(tangent_space))
     res = svd_res.U * svd_res.Vt
     @assert isapprox(res*transpose(tangent_space) -
                      transpose(null_space)*Gamma, zeros(num_vars,num_vars-1),
-                     atol=TOL)
+                     atol=eps(Float64)^0.75)
 
-    @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=TOL)
+    @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=eps(Float64)^0.75)
     return res
 end
