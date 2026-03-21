@@ -42,6 +42,17 @@ function check_inputs(num_funcs, num_vars)
     end
 end
 
+function check_homogeneous(system, num_vars, degrees)
+    for idx in length(system)
+        func = system[idx]
+        deg = degrees[idx]
+        input = rand(ComplexF64, num_vars)
+        if !isapprox(func(input), func(3*input)/3^deg, atol=eps(Float64)^0.75)
+            throw(ErrorException("Inputted system isn't homogeneous."))
+        end
+    end
+end
+
 # returns a vector with D+1 components, representing the 0:Dth degree
 # components of the given polynomial f evaluated at the input
 function compute_deg_components!(component_array,func,input::ComplexF64,D::Integer)
@@ -153,7 +164,7 @@ function print_input()
 end
 
 function print_output(success, system, W_0, final_root, use_heuristic,
-                      num_steps, avg_step_size, avg_newton_iters)
+                      num_steps, avg_step_size, avg_newton_iters, avg_duration)
     println("")
     println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
     if success
@@ -163,6 +174,7 @@ function print_output(success, system, W_0, final_root, use_heuristic,
     end
     println("Average timestep: $avg_step_size")
     println("Average number of Newton iterations per step: $avg_newton_iters")
+    println("Average duration of choose_timestep: $avg_duration")
     println("")
     if success
         println("Final root: $(round.(final_root; digits=8))")

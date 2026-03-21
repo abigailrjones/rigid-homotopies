@@ -6,11 +6,12 @@ include("utils.jl")
 include("start_system.jl")
 include("choose_timestep.jl")
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root, path;
         use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
+    check_homogeneous(system, num_vars, degrees)
     if (mid_print) println("A start system, start root, and path were provided.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
     # TODO check_build_path
@@ -20,10 +21,11 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
                      initial_dt)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
+    check_homogeneous(system, num_vars, degrees)
     if (mid_print) println("A start system and start root were provided. The \
                             default path will be used.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
@@ -35,10 +37,11 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
                      initial_dt)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
+function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, init_roots; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
+    check_homogeneous(system, num_vars, degrees)
     if (mid_print) println("A list of initial zeros was provided. A default \
                        start system will be computed from these initial zeros, \
                    and the default path will be used.") end
@@ -57,6 +60,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
         max_iter::Int; use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
+    check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
     if (mid_print) println("The default random start system and start root will \
                        be used, as well as the default path.") end
@@ -73,7 +77,7 @@ end
 function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
         mid_print::Bool, initial_dt)
-    success, final_root, num_steps, avg_step_size, avg_newton_iters =
+    success, final_root, num_steps, avg_step_size, avg_newton_iters, avg_duration =
     use_heuristic ? track_path_heuristic(system, path, start_root, max_degree,
                                          max_iter, num_funcs, num_vars,
                                          mid_print, initial_dt) :
@@ -94,11 +98,11 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
 
     if (mid_print) print_output(success, system, path(0.0), final_root,
                             use_heuristic, num_steps, avg_step_size,
-                        avg_newton_iters) end
+                        avg_newton_iters,avg_duration) end
     if !success
         @assert false
     end
-    return final_root, num_steps, avg_step_size
+    return final_root, num_steps, avg_step_size, avg_duration
 end
 
 function build_path(start_system)
@@ -151,7 +155,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     W_t = path(t)
     dt = choose_timestep(system, W_t, start_root, max_degree, max_iter,
                          num_funcs, num_vars)
-    prog_data = [1.0, 0.0, 0.0, 0.0]
+    prog_data = [1.0, 0.0, 0.0, 0.0, 0.0]
     #         = [min dt, max dt, avg dt, avg newton iter]
 
     root = complex(copy(start_root))
@@ -164,17 +168,23 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             if mid_print
                 println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
             end
-            return true, root, iter-1, prog_data[3], prog_data[4]
+            return true, root, iter-1, prog_data[3], prog_data[4], prog_data[5]
         else
             t -= dt
             W_t = path(t)
             step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
             # compute timestep for next step
+            #=
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
                                  num_funcs, num_vars)
+            =#
+            res = @timed choose_timestep(system, W_t, root, max_degree,
+                                          max_iter, num_funcs, num_vars)
+            dt = res.value
+            prog_data[5] = prog_data[5] + (res.time - prog_data[5])/iter
         end
     end
-    return false, NaN, max_iter, prog_data[3], prog_data[4]
+    return false, NaN, max_iter, prog_data[3], prog_data[4], prog_data[5]
 end
 
 # changes root and prog_data in place
