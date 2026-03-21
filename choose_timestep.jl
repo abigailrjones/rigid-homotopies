@@ -24,7 +24,6 @@ function estimate_gammaprob(func::Function,grad_at_input,eta,DD::Integer,num_var
         # and add to sum
         compute_deg_components!(deg_components,func,w,D)
         sum_squared_components .+= abs.(deg_components).^2 ./ (D+1)
-        # sum_squared_components += abs.(compute_deg_components(func,w,D)).^2
     end
     return_est = 0
     fac = k -> binomial(num_vars+k, k)/d0h_sq_norm/s
@@ -43,7 +42,7 @@ end
 function compute_condition_num(jac)
     row_norms = 1.0 ./ sqrt.(sum(abs2, jac; dims=2))
     L = jac .* row_norms
-    # note that svdvals orders singular values in descending order
+    # note that svdvals lists singular values in descending order
     return 1.0 / svdvals(L)[end]
 end
 
