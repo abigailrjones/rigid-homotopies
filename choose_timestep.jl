@@ -9,7 +9,43 @@ function sample_unit_ball(dim::Integer, num_pts::Integer)
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
 
-function estimate_gammaprob(func::Function,grad_at_input,eta,DD::Integer,num_vars)
+function estimate_gammaprob(system, W_t, input, num_vars, num_funcs, eta,
+        d0h_sq_norm, DD::Integer)
+    D = DD==1 ? 2 : 2^ceil(Int64, log2(DD))
+
+    # compute degree j components for each polynomial in the system using FFT
+    s = ceil(Int64, 1 + log(2, D/eta))
+    rand_w = sample_unit_ball(num_vars, s)
+    # TODO allocate once for entire program?
+    deg_components = zeros(ComplexF64, s, D+1, num_funcs)
+    sum_squared_components = zeros(Float64, 1, D+1, num_funcs)
+    for i in 1:s
+        w = rand_w[i]
+        for j in 0:D
+            for k in 1:num_funcs
+                deg_components[i,j+1,k] = system[k](W_t[k] * (w + input))
+            end
+            w *= exp(2*pi*im/(D+1))
+        end
+    end
+    fft!(deg_components, 2)
+    sum_squared_components .= sum(abs.(deg_components).^2 ./ (D+1), dims=1)
+    sum_squared_components ./ d0h_sq_norm
+
+    return_est = zeros(Float64, num_funcs)
+    fac = j -> binomial(num_vars+j, j)/s
+    for k in 1:num_funcs
+        for j in 2:D
+            new_est = (32*(num_vars-1)*j)^(1/(2-2/j))*(fac(j)*sum_squared_components[1,j+1,k])^(1/(2*j-2))
+            if new_est > return_est[k]
+                return_est[k] = new_est
+            end
+        end
+    end
+    return return_est
+end
+
+function old_estimate_gammaprob(func::Function,grad_at_input,eta,DD::Integer,num_vars)
     D = DD==1 ? 2 : 2^ceil(Int64, log2(DD))
     d0h_sq_norm = 0.0
     for elt in grad_at_input
@@ -49,10 +85,9 @@ end
 function choose_timestep(system, W_t, input, D, max_iter, num_funcs, num_vars; epsilon=1e-8)
     sum_g_sq = 0.0
     jac, _ = build_jacobian_reverse(input, system, W_t)
-    for idx in 1:num_funcs
-        func = X -> system[idx](W_t[idx] * (X + input))
-        grad_at_input = jac[idx,:]
-        sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
-    end
+    d0h_sq_norm = sum(jac.^2, dims=2)
+    sum_g_sq = sum(estimate_gammaprob(system, W_t, input, num_vars, num_funcs,
+                                      epsilon/(num_funcs*max_iter), d0h_sq_norm, D).^2)
+
     return 1/(240 * compute_condition_num(jac)^2 * sqrt(sum_g_sq))
 end
