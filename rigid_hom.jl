@@ -12,6 +12,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
         initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
+    max_degree = maximum(degrees)
     if (mid_print) println("A start system, start root, and path were provided.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
     # TODO check_build_path
@@ -26,6 +27,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
         mid_print::Bool=false, initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
+    max_degree = maximum(degrees)
     if (mid_print) println("A start system and start root were provided. The \
                             default path will be used.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
@@ -42,6 +44,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
         mid_print::Bool=false, initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
+    max_degree = maximum(degrees)
     if (mid_print) println("A list of initial zeros was provided. A default \
                        start system will be computed from these initial zeros, \
                    and the default path will be used.") end
@@ -77,7 +80,9 @@ end
 function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
         mid_print::Bool, initial_dt)
-    success, final_root, num_steps, avg_step_size, avg_newton_iters, avg_duration =
+    success, final_root, num_steps, min_step_size, max_step_size,
+    avg_step_size, avg_newton_iters, avg_duration, min_gammaprob,
+    max_gammaprob, avg_gammaprob, min_condnum, max_condnum, avg_condnum =
     use_heuristic ? track_path_heuristic(system, path, start_root, max_degree,
                                          max_iter, num_funcs, num_vars,
                                          mid_print, initial_dt) :
@@ -98,11 +103,13 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
 
     if (mid_print) print_output(success, system, path(0.0), final_root,
                             use_heuristic, num_steps, avg_step_size,
-                        avg_newton_iters,avg_duration) end
+                            avg_newton_iters, avg_duration) end
     if !success
-        @assert false
+        throw(ErrorException("Rigid homotopy failed to converge in $max_iter iterations."))
     end
-    return final_root, num_steps, avg_step_size, avg_duration
+    return final_root, num_steps, min_step_size, max_step_size, avg_step_size,
+    avg_duration, min_gammaprob, max_gammaprob, avg_gammaprob, min_condnum,
+    max_condnum, avg_condnum
 end
 
 function build_path(start_system)
@@ -117,8 +124,10 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
     t = 1.0
     W_t = path(t)
     dt = initial_dt
-    prog_data = [1.0, 0.0, 0.0, 0.0]
-    #         = [min dt, max dt, avg dt, avg newton iter]
+    prog_data = [1.0, 0.0, 0.0, 0.0, -1.0, Inf, 0.0, 0.0, Inf, 0.0, 0.0]
+    #         = [min dt (1), max dt (2), avg dt (3), avg newton iter (4), avg choose_timestep
+    #            duration (5), min gammaprob (6), max gammaprob (7), avg gammaprob (8), min
+    #            condnum (9), max condnum (10), avg condnum (11)]
 
     root = complex(copy(start_root))
     iter = 0
@@ -129,10 +138,10 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             newton!(root, system, path(0.0))
             scale_root!(root)
 
-            if mid_print
-                println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
-            end
-            return true, root, iter-1, prog_data[3], prog_data[4]
+            return true, root, iter-1, prog_data[1], prog_data[2],
+            prog_data[3], prog_data[4], prog_data[5], prog_data[6],
+            prog_data[7], prog_data[8], prog_data[9], prog_data[10],
+            prog_data[11]
         else
             t -= dt
             W_t = path(t)
@@ -146,17 +155,21 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             end
         end
     end
-    return false, NaN, max_iter, prog_data[3], prog_data[4]
+    return false, NaN, max_iter, prog_data[1], prog_data[2], prog_data[3],
+    prog_data[4], prog_data[5], prog_data[6], prog_data[7], prog_data[8],
+    prog_data[9], prog_data[10], prog_data[11]
 end
 
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         num_vars, mid_print)
     t = 1.0
+    prog_data = [1.0, 0.0, 0.0, 0.0, 0.0, Inf, 0.0, 0.0, Inf, 0.0, 0.0]
+    #         = [min dt (1), max dt (2), avg dt (3), avg newton iter (4), avg choose_timestep
+    #            duration (5), min gammaprob (6), max gammaprob (7), avg gammaprob (8), min
+    #            condnum (9), max condnum (10), avg condnum (11)]
     W_t = path(t)
-    dt = choose_timestep(system, W_t, start_root, max_degree, max_iter,
-                         num_funcs, num_vars)
-    prog_data = [1.0, 0.0, 0.0, 0.0, 0.0]
-    #         = [min dt, max dt, avg dt, avg newton iter]
+    dt = choose_timestep!(system, W_t, start_root, max_degree, max_iter,
+                          num_funcs, num_vars, 1, prog_data)
 
     root = complex(copy(start_root))
     for iter in 1:max_iter
@@ -165,10 +178,10 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             newton!(root, system, path(0.0))
             scale_root!(root)
 
-            if mid_print
-                println("Minimum timestep: $(prog_data[1]), maximum timestep: $(prog_data[2])")
-            end
-            return true, root, iter-1, prog_data[3], prog_data[4], prog_data[5]
+            return true, root, iter-1, prog_data[1], prog_data[2],
+            prog_data[3], prog_data[4], prog_data[5], prog_data[6],
+            prog_data[7], prog_data[8], prog_data[9], prog_data[10],
+            prog_data[11]
         else
             t -= dt
             W_t = path(t)
@@ -178,13 +191,31 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
                                  num_funcs, num_vars)
             =#
-            res = @timed choose_timestep(system, W_t, root, max_degree,
-                                          max_iter, num_funcs, num_vars)
+            # TODO TODO
+            if (iter % 1000 == 1)
+                if iter==1
+                    open("examples/data/intermediate_roots.txt", "a") do f
+                        write(f, "---new system---\n")
+                    end
+                end
+                open("examples/data/intermediate_roots.txt", "a") do f
+                    write(f, "$t ")
+                    for elt in root
+                        write(f, "$(real(elt)) $(imag(elt)) ")
+                    end
+                    write(f, "\n")
+                end
+            end
+            res = @timed choose_timestep!(system, W_t, root, max_degree,
+                                          max_iter, num_funcs, num_vars, iter+1,
+                                          prog_data)
             dt = res.value
             prog_data[5] = prog_data[5] + (res.time - prog_data[5])/iter
         end
     end
-    return false, NaN, max_iter, prog_data[3], prog_data[4], prog_data[5]
+    return false, NaN, max_iter, prog_data[1], prog_data[2], prog_data[3],
+    prog_data[4], prog_data[5], prog_data[6], prog_data[7], prog_data[8],
+    prog_data[9], prog_data[10], prog_data[11]
 end
 
 # changes root and prog_data in place

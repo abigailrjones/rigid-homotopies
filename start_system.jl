@@ -30,6 +30,7 @@ function build_start_system(system, degrees::Vector{Int}, num_vars)
                                               num_vars))
     end
 
+    check_build_start_system(system,start_system,start_root,num_funcs)
     return start_system, start_root
 end
 
@@ -79,37 +80,47 @@ end
 # intersection (this yields a random initial point in the zero set of the given
 # polynomial)
 function sample_zero_set(func, num_vars, deg)
-    PQ = randn(ComplexF64, num_vars, 2)
+    if num_vars == 1
+        throw(ErrorException("Root finding for single variable homogeneous \
+                             systems is ill-behaved and not supported."))
+    end
 
     local init_root
-    try
-        sol = [1.0 + 0*im, 1.0]
-        newton!(sol, [func], [PQ])
-        init_root = PQ * sol
-        check_sampled_init_root(func, init_root)
-    catch e
-        println("Newton ran into error... $e. Trying companion matrix...")
-        # run companion matrix
-        coeffs = zeros(ComplexF64,deg+1)
-        compute_deg_components!(coeffs, x -> func(PQ * [x,1.0+0*im]), 1.0+0*im, deg)
-        @assert (!isapprox(coeffs[end], 0.0, atol=eps(Float64)^0.75))
-        M = diagm(-1 => ones(ComplexF64, deg-1))
-        M[1:end, end] = -1*(coeffs[1:end-1] / coeffs[end])
-        roots = eigvals(M)
-        for root in roots
-            init_root = PQ * [root, 1.]
-            if (isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75) & (norm(init_root) >= 1))
-                check_sampled_init_root(func, init_root)
-                return init_root / norm(init_root)
-            #=
-            else
-                println(func(init_root))
-                println(norm(init_root))
-            =#
+    for iter in 1:100
+        PQ = randn(ComplexF64, num_vars, 2)
+        try
+            sol = [1.0 + 0*im, 1.0]
+            newton!(sol, [func], [PQ], max_iter=100)
+            init_root = PQ * sol
+            check_sampled_init_root(func, init_root)
+        catch e
+            # run companion matrix
+            D = deg==1 ? 2 : 2^ceil(Int64, log2(deg))
+            coeffs = zeros(ComplexF64,D+1)
+            compute_deg_components!(coeffs, x -> func(PQ * [x,1.0+0*im]), 1.0+0*im, D)
+            @assert (!isapprox(coeffs[deg+1], 0.0, atol=eps(Float64)^0.75))
+            M = diagm(-1 => ones(ComplexF64, deg-1))
+            M[1:end, end] = -1*(coeffs[1:deg] / coeffs[deg+1])
+            roots = eigvals!(M)
+            for root in roots
+                init_root = PQ * [root, 1.]
+                try
+                    newton!(init_root, [func], max_iter=100)
+                catch
+                    continue
+                else
+                    if isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75)
+                        # make sure root will remain a root after scaling
+                        if (log(norm(func(init_root)))-log(eps(Float64)^0.75))/deg < log(norm(init_root))
+                            check_sampled_init_root(func, init_root)
+                            return init_root / norm(init_root)
+                        end
+                    end
+                end
             end
+        else
+            return init_root / norm(init_root)
         end
-    else
-        return init_root / norm(init_root)
     end
     throw(ErrorException("Failed to sample an initial zero."))
 end

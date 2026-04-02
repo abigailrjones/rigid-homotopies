@@ -46,7 +46,7 @@ function compute_condition_num(jac)
     return 1.0 / svdvals(L)[end]
 end
 
-function choose_timestep(system, W_t, input, D, max_iter, num_funcs, num_vars; epsilon=1e-8)
+function choose_timestep!(system, W_t, input, D, max_iter, num_funcs, num_vars, iter, prog_data; epsilon=1e-8)
     sum_g_sq = 0.0
     jac, _ = build_jacobian_reverse(input, system, W_t)
     for idx in 1:num_funcs
@@ -54,5 +54,14 @@ function choose_timestep(system, W_t, input, D, max_iter, num_funcs, num_vars; e
         grad_at_input = jac[idx,:]
         sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
     end
-    return 1/(240 * compute_condition_num(jac)^2 * sqrt(sum_g_sq))
+    cond_num = compute_condition_num(jac)^2
+    sqrt_sum_g_sq = sqrt(sum_g_sq)
+    if (sqrt_sum_g_sq < prog_data[6]) prog_data[6] = sqrt_sum_g_sq end
+    if (sqrt_sum_g_sq > prog_data[7]) prog_data[7] = sqrt_sum_g_sq end
+    prog_data[8] = prog_data[8] + (sqrt_sum_g_sq - prog_data[8])/iter
+    if (cond_num < prog_data[9]) prog_data[9] = cond_num end
+    if (cond_num > prog_data[10]) prog_data[10] = cond_num end
+    prog_data[11] = prog_data[11] + (cond_num - prog_data[11])/iter
+
+    return 1/(240 * cond_num^2 * sqrt_sum_g_sq)
 end

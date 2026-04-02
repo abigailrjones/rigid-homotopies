@@ -61,6 +61,7 @@ function compute_deg_components!(component_array,func,input::ComplexF64,D::Integ
         input *= exp(2*pi*im/(D+1))
     end
     fft!(component_array)
+    component_array ./= (D+1)
     return
 end
 
@@ -72,6 +73,7 @@ function compute_deg_components!(component_array,func,input::Vector{ComplexF64},
         input .*= exp(2*pi*im/(D+1))
     end
     fft!(component_array)
+    component_array ./= (D+1)
     return
 end
 
@@ -113,31 +115,28 @@ end
 
 function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps(Float64)^0.75)::Int
     inc = Vector{ComplexF64}(undef, length(guess))
-    residual = 1.0
     err = 1.0
-    give_up = 1.0e10
     num_iter = 0
-    num_small = 0
-    magic = 3
+    give_up = 1.0e10
+    num_conv = 0
+    threshold = 3
 
-    while (err < give_up) & (num_iter < max_iter)
-        if (num_small > magic) & isapprox(residual, 0.0, atol=tol)
-            return num_iter
-        else
-            jac, output = build_jacobian_reverse(guess, system, matrices)
-            inc .= (pinv(jac) * output)
-            guess .-= inc
-            residual = norm(output)
-            err = norm(inc)
+    while (err < give_up) && (num_iter < max_iter)
+        jac, output = build_jacobian_reverse(guess, system, matrices)
+        inc .= (pinv(jac) * output)
+        guess .-= inc
+        residual = norm(output)
+        err = norm(inc)
+        num_iter += 1
 
-            if isapprox(err, 0.0, atol=tol) num_small += 1
-            else num_small = 0
+        isapprox(err, 0.0, atol=tol) ? num_conv += 1 : num_conv = 0
+
+        if num_conv >= threshold
+            if !isapprox(residual, 0.0, atol=tol)
+                throw(ErrorException("Newton's method converged to a non-root, \
+                                     or is not sufficiently precise."))
             end
-            #=
-            println("Iteration $num_iter: guess=$(round.(guess; digits=3)), next
-                    guess=$(round.(next_guess; digits=3))")
-            =#
-            num_iter += 1
+            return num_iter
         end
     end
 
@@ -195,14 +194,16 @@ end
 
 function check_sampled_init_root(func, init_root)
     if (!isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75))
-        println("Not close enough to zero pre-scaling: $(func(init_root))")
+        # println("Not close enough to zero pre-scaling: $(func(init_root))")
+        throw(ErrorException("Evaluation pre-scaling is not close enough to zero."))
     end
-    @assert isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75)
+    # @assert isapprox(func(init_root), 0.0, atol=eps(Float64)^0.75)
     if (!isapprox(func(init_root/norm(init_root)), 0.0, atol=eps(Float64)^0.75))
-        println("Norm of proposed zero: $(norm(init_root))")
-        println("Evaluation post-scaling (not close enough to zero): $(func(init_root/norm(init_root)))")
+        # println("Norm of proposed zero: $(norm(init_root))")
+        # println("Evaluation post-scaling (not close enough to zero): $(func(init_root/norm(init_root)))")
+        throw(ErrorException("Evaluation post-scaling is not close enough to zero."))
     end
-    @assert isapprox(func(init_root/norm(init_root)), 0.0, atol=eps(Float64)^0.75)
+    # @assert isapprox(func(init_root/norm(init_root)), 0.0, atol=eps(Float64)^0.75)
 end
 
 # build_start_system will only work as expected if inputted polynomials are
