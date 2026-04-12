@@ -178,6 +178,19 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             newton!(root, system, path(0.0))
             scale_root!(root)
 
+            # TODO TODO
+            #=
+            open("examples/data/new_intermediate_roots.txt", "a") do f
+                write(f, "$t ")
+                for elt in root
+                    write(f, "$(real(elt)) $(imag(elt)) ")
+                end
+                write(f, "\n")
+                write(f, "$(iter-1) $(prog_data[3]) $(prog_data[8]) $(prog_data[11])")
+                write(f, "\n")
+            end
+            =#
+
             return true, root, iter-1, prog_data[1], prog_data[2],
             prog_data[3], prog_data[4], prog_data[5], prog_data[6],
             prog_data[7], prog_data[8], prog_data[9], prog_data[10],
@@ -190,15 +203,14 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             #=
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
                                  num_funcs, num_vars)
-            =#
             # TODO TODO
             if (iter % 1000 == 1)
                 if iter==1
-                    open("examples/data/intermediate_roots.txt", "a") do f
+                    open("examples/data/new_intermediate_roots.txt", "a") do f
                         write(f, "---new system---\n")
                     end
                 end
-                open("examples/data/intermediate_roots.txt", "a") do f
+                open("examples/data/new_intermediate_roots.txt", "a") do f
                     write(f, "$t ")
                     for elt in root
                         write(f, "$(real(elt)) $(imag(elt)) ")
@@ -206,6 +218,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                     write(f, "\n")
                 end
             end
+            =#
             res = @timed choose_timestep!(system, W_t, root, max_degree,
                                           max_iter, num_funcs, num_vars, iter+1,
                                           prog_data)

@@ -40,7 +40,12 @@ end
 # in particular, we consider the L2 norm of the matrix L(F_t, z) (defined in
 # (15) in RH1), which is the inverse of the smallest singular value of L
 function compute_condition_num(jac)
-    row_norms = 1.0 ./ sqrt.(sum(abs2, jac; dims=2))
+    if length(size(jac))==1
+        # jacobian is one-dimensional, so row_norms is a scalar
+        row_norms = 1.0 / sqrt(sum(abs2, jac))
+    else
+        row_norms = 1.0 ./ sqrt.(sum(abs2, jac; dims=2))
+    end
     L = jac .* row_norms
     # note that svdvals lists singular values in descending order
     return 1.0 / svdvals(L)[end]

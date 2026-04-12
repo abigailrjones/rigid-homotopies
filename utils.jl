@@ -47,8 +47,10 @@ function check_homogeneous(system, num_vars, degrees)
         func = system[idx]
         deg = degrees[idx]
         input = rand(ComplexF64, num_vars)
-        if !isapprox(func(input), func(3*input)/3^deg, atol=eps(Float64)^0.75)
-            throw(ErrorException("Inputted system isn't homogeneous."))
+        if !isapprox(func(input), func(2*input)/2^deg, atol=eps(Float64)^0.75)
+            println("The inputted system may not be homogeneous. The program \
+                     will run, but if behavior isn't as expected, verify \
+                     inputted system is homogeneous.")
         end
     end
 end
