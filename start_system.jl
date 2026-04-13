@@ -35,7 +35,7 @@ function build_start_system(system, degrees::Vector{Int}, num_vars)
 end
 
 function build_random_unitary(num_vars)
-    svd_res = svd(rand(ComplexF64,num_vars,num_vars))
+    svd_res = svd(randn(ComplexF64,num_vars,num_vars))
     return svd_res.U * svd_res.Vt
 end
 

@@ -23,7 +23,7 @@ function estimate_gammaprob(func::Function,grad_at_input,eta,DD::Integer,num_var
         # compute each degree component of h evaluated at w, square elementwise
         # and add to sum
         compute_deg_components!(deg_components,func,w,D)
-        sum_squared_components .+= abs.(deg_components).^2 ./ (D+1)
+        sum_squared_components .+= abs.(deg_components).^2
     end
     return_est = 0
     fac = k -> binomial(num_vars+k, k)/d0h_sq_norm/s
@@ -57,7 +57,8 @@ function choose_timestep!(system, W_t, input, D, max_iter, num_funcs, num_vars, 
     for idx in 1:num_funcs
         func = X -> system[idx](W_t[idx] * (X + input))
         grad_at_input = jac[idx,:]
-        sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
+        # sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
+        sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon,D,num_vars)^2
     end
     cond_num = compute_condition_num(jac)^2
     sqrt_sum_g_sq = sqrt(sum_g_sq)

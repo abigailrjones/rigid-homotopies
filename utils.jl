@@ -14,8 +14,7 @@ struct WaringPoly
     M::Array{ComplexF64}
 end
 
-# WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,num_vars,rank))
-WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,rand(ComplexF64,rank,num_vars))
+WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,randn(ComplexF64,rank,num_vars))
 
 function (poly::WaringPoly)(X)::ComplexF64
     # return sum((poly.M * X).^poly.deg)
@@ -46,7 +45,7 @@ function check_homogeneous(system, num_vars, degrees)
     for idx in length(system)
         func = system[idx]
         deg = degrees[idx]
-        input = rand(ComplexF64, num_vars)
+        input = randn(ComplexF64, num_vars)
         if !isapprox(func(input), func(2*input)/2^deg, atol=eps(Float64)^0.75)
             println("The inputted system may not be homogeneous. The program \
                      will run, but if behavior isn't as expected, verify \
