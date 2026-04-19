@@ -7,7 +7,7 @@ include("start_system.jl")
 include("choose_timestep.jl")
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int, start_system, start_root, path;
+        max_iter::Int, start_system, start_root, path; filename::String=" ",
         use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
@@ -19,7 +19,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt)
+                     initial_dt, filename=filename)
 end
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
@@ -60,7 +60,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
 end
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int; use_heuristic::Bool=false, mid_print::Bool=false,
+        max_iter::Int; filename::String=" ", use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Number=0.1)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
@@ -74,20 +74,20 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt)
+                     initial_dt, filename=filename)
 end
 
 function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
         max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
-        mid_print::Bool, initial_dt)
+        mid_print::Bool, initial_dt; filename::String=" ")
     success, final_root, num_steps, min_step_size, max_step_size,
     avg_step_size, avg_newton_iters, avg_duration, min_gammaprob,
     max_gammaprob, avg_gammaprob, min_condnum, max_condnum, avg_condnum =
     use_heuristic ? track_path_heuristic(system, path, start_root, max_degree,
                                          max_iter, num_funcs, num_vars,
-                                         mid_print, initial_dt) :
+                                         mid_print, initial_dt, filename) :
                     track_path(system, path, start_root, max_degree, max_iter,
-                               num_funcs, num_vars, mid_print)
+                               num_funcs, num_vars, mid_print, filename)
 
     if success
         try
@@ -107,6 +107,13 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
     if !success
         throw(ErrorException("Rigid homotopy failed to converge in $max_iter iterations."))
     end
+
+    if filename != " "
+        open(filename, "a") do f
+            write(f, "$(num_steps-1) $(avg_step_size) $(avg_gammaprob) $(avg_condnum)")
+        end
+    end
+
     return final_root, num_steps, min_step_size, max_step_size, avg_step_size,
     avg_duration, min_gammaprob, max_gammaprob, avg_gammaprob, min_condnum,
     max_condnum, avg_condnum
@@ -120,7 +127,7 @@ function build_path(start_system)
 end
 
 function track_path_heuristic(system, path, start_root, max_degree, max_iter,
-        num_funcs, num_vars, mid_print, initial_dt)
+        num_funcs, num_vars, mid_print, initial_dt, filename)
     t = 1.0
     W_t = path(t)
     dt = initial_dt
@@ -130,6 +137,10 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
     #            condnum (9), max condnum (10), avg condnum (11)]
 
     root = complex(copy(start_root))
+    if filename != " "
+        write_data(filename, t, 0.0, 0.0, dt, root; overwrite=true)
+    end
+
     iter = 0
     while iter<max_iter
         iter += 1
@@ -137,6 +148,10 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             # refine root
             newton!(root, system, path(0.0))
             scale_root!(root)
+
+            if filename != " "
+                write_data(filename, t, 0.0, 0.0, dt, root)
+            end
 
             return true, root, iter-1, prog_data[1], prog_data[2],
             prog_data[3], prog_data[4], prog_data[5], prog_data[6],
@@ -147,6 +162,9 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             W_t = path(t)
             try
                 step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+                if (filename != " ")# && (iter % round(Int,max_iter / 1000) == 0)
+                    write_data(filename, t, 0.0, 0.0, dt, root)
+                end
             catch e
                 println(e)
                 t += dt
@@ -161,35 +179,31 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
 end
 
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
-        num_vars, mid_print)
+        num_vars, mid_print, filename)
     t = 1.0
     prog_data = [1.0, 0.0, 0.0, 0.0, 0.0, Inf, 0.0, 0.0, Inf, 0.0, 0.0]
     #         = [min dt (1), max dt (2), avg dt (3), avg newton iter (4), avg choose_timestep
     #            duration (5), min gammaprob (6), max gammaprob (7), avg gammaprob (8), min
     #            condnum (9), max condnum (10), avg condnum (11)]
     W_t = path(t)
-    dt = choose_timestep!(system, W_t, start_root, max_degree, max_iter,
-                          num_funcs, num_vars, 1, prog_data)
+    dt, cond_num, gammafrob = choose_timestep!(system, W_t, start_root,
+                                               max_degree, max_iter, num_funcs,
+                                               num_vars, 1, prog_data)
 
     root = complex(copy(start_root))
+    if filename != " "
+        write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=true)
+    end
+
     for iter in 1:max_iter
         if isapprox(t, 0.0, atol=eps(Float64)^0.75) || (t < 0.0)
             # refine root
             newton!(root, system, path(0.0))
             scale_root!(root)
 
-            # TODO TODO
-            #=
-            open("examples/data/new_intermediate_roots.txt", "a") do f
-                write(f, "$t ")
-                for elt in root
-                    write(f, "$(real(elt)) $(imag(elt)) ")
-                end
-                write(f, "\n")
-                write(f, "$(iter-1) $(prog_data[3]) $(prog_data[8]) $(prog_data[11])")
-                write(f, "\n")
+            if filename != " "
+                write_data(filename, t, cond_num, gammafrob, dt, root)
             end
-            =#
 
             return true, root, iter-1, prog_data[1], prog_data[2],
             prog_data[3], prog_data[4], prog_data[5], prog_data[6],
@@ -203,32 +217,30 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
             #=
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
                                  num_funcs, num_vars)
-            # TODO TODO
-            if (iter % 1000 == 1)
-                if iter==1
-                    open("examples/data/new_intermediate_roots.txt", "a") do f
-                        write(f, "---new system---\n")
-                    end
-                end
-                open("examples/data/new_intermediate_roots.txt", "a") do f
-                    write(f, "$t ")
-                    for elt in root
-                        write(f, "$(real(elt)) $(imag(elt)) ")
-                    end
-                    write(f, "\n")
-                end
-            end
             =#
-            res = @timed choose_timestep!(system, W_t, root, max_degree,
-                                          max_iter, num_funcs, num_vars, iter+1,
-                                          prog_data)
-            dt = res.value
-            prog_data[5] = prog_data[5] + (res.time - prog_data[5])/iter
+            dt, cond_num, gammafrob = choose_timestep!(system, W_t, root,
+                                                       max_degree, max_iter,
+                                                       num_funcs, num_vars,
+                                                       iter+1, prog_data)
+
+            if (filename != " ") && (iter % round(Int,max_iter / 1000) == 0)
+                write_data(filename, t, cond_num, gammafrob, dt, root)
+            end
         end
     end
     return false, NaN, max_iter, prog_data[1], prog_data[2], prog_data[3],
     prog_data[4], prog_data[5], prog_data[6], prog_data[7], prog_data[8],
     prog_data[9], prog_data[10], prog_data[11]
+end
+
+function write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=false)
+    open(filename, overwrite ? "w" : "a") do f
+        write(f, "$t $cond_num $gammafrob $dt ")
+        for elt in root
+            write(f, "$(real(elt)) $(imag(elt)) ")
+        end
+        write(f, "\n")
+    end
 end
 
 # changes root and prog_data in place
