@@ -190,6 +190,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                                                max_degree, max_iter, num_funcs,
                                                num_vars, 1, prog_data)
 
+    iter_print = round(Int, (1 / dt) / 100)
     root = complex(copy(start_root))
     if filename != " "
         write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=true)
@@ -223,7 +224,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                                                        num_funcs, num_vars,
                                                        iter+1, prog_data)
 
-            if (filename != " ") && (iter % round(Int,max_iter / 1000) == 0)
+            if (filename != " ") && (iter % iter_print == 0)
                 write_data(filename, t, cond_num, gammafrob, dt, root)
             end
         end
