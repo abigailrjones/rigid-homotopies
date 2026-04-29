@@ -190,7 +190,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                                                max_degree, max_iter, num_funcs,
                                                num_vars, 1, prog_data)
 
-    iter_print = round(Int, (1 / dt) / 100)
+    iter_print = round(Int, (1 / dt) / 1000)
     root = complex(copy(start_root))
     if filename != " "
         write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=true)

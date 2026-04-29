@@ -58,7 +58,7 @@ function choose_timestep!(system, W_t, input, D, max_iter, num_funcs, num_vars, 
         func = X -> system[idx](W_t[idx] * (X + input))
         grad_at_input = jac[idx,:]
         # sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
-        sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon,D,num_vars)^2
+        sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
     end
     cond_num = compute_condition_num(jac)
     sqrt_sum_g_sq = sqrt(sum_g_sq)
