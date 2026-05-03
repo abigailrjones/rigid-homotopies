@@ -1,10 +1,10 @@
 include("utils.jl")
 using LinearAlgebra: svdvals
 
-# Note to self: verified real version via plotting
 function sample_unit_ball(dim::Integer, num_pts::Integer)
     x = randn(ComplexF64,(num_pts,dim))
-    r = rand(Float64,(num_pts,)).^(1/dim)
+    # complex dim-ball has 2*dim real dimensions
+    r = rand(Float64,(num_pts,)).^(1/(2*dim))
     norm = sqrt.(sum(abs2, x; dims=2))
     return [x[i,:]*r[i]/norm[i] for i in 1:num_pts]
 end
@@ -57,7 +57,6 @@ function choose_timestep!(system, W_t, input, D, max_iter, num_funcs, num_vars, 
     for idx in 1:num_funcs
         func = X -> system[idx](W_t[idx] * (X + input))
         grad_at_input = jac[idx,:]
-        # sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
         sum_g_sq += estimate_gammaprob(func,grad_at_input,epsilon/((num_vars-1)*max_iter),D,num_vars)^2
     end
     cond_num = compute_condition_num(jac)
