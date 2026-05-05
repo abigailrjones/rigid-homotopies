@@ -1,5 +1,5 @@
-include("../rigid_hom.jl")
-include("../utils.jl")
+include("../../rigid_hom.jl")
+include("../../utils.jl")
 
 function write_system(F, file)
     open(file, "w") do f
@@ -10,30 +10,28 @@ function write_system(F, file)
     end
 end
 
-num_vars = 3
-degrees = [4,4]
+@assert false
+
+num_vars = 2
+degrees = [3]
 num_funcs = length(degrees)
-max_iter = 1_000_000_000
+max_iter = 1_000_000
 mid_print = true
 
-# @assert length(ARGS)==1
-# rank = parse(Int,ARGS[1])
-
-rank = 5
+rank = 4
 
 if false
     for val in [0,1,2,3,4,5]
-        open("examples/data/complexity/data_heuristic_$(rank)_$(val).txt", "w") do f
+        open("data_heuristic_$(rank)_$(val).txt", "w") do f
             # empty file
         end
     end
 end
 
 # run iterations
-for iter in 2:10
+for iter in 1:100
     F = build_waring_system(num_vars, degrees, rank*ones(Int,length(degrees)))
-    # write_system(F, "examples/data/complexity/start_system/data_big_heuristic_start_system_$rank.txt")
-    write_system(F, "examples/data/complexity/start_system/data_heuristic_start_system_$rank.txt")
+    write_system(F, "data_heuristic_start_system_$rank.txt")
     start_system, start_root = build_start_system(F, degrees, num_vars)
 
     local result
@@ -56,8 +54,7 @@ for iter in 2:10
         println("Error on run $iter using rigorous timestep.")
         throw(e)
     else
-        # open("examples/data/complexity/data_big_heuristic_$(rank)_0.txt", "a") do f
-        open("examples/data/complexity/data_heuristic_$(rank)_0.txt", "a") do f
+        open("data_heuristic_$(rank)_0.txt", "a") do f
             write(f, "$iter $avg_step_size $num_steps 0.0 $rigorous_result\n")
         end
     end
@@ -79,8 +76,7 @@ for iter in 2:10
             throw(e)
         else
             diff = sqrt(sum((rigorous_result - result).^2))
-            # open("examples/data/complexity/data_big_heuristic_$(rank)_$(val).txt", "a") do f
-            open("examples/data/complexity/data_heuristic_$(rank)_$(val).txt", "a") do f
+            open("data_heuristic_$(rank)_$(val).txt", "a") do f
                 write(f, "$iter $avg_step_size $num_steps $diff $result\n")
             end
         end
