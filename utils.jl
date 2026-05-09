@@ -9,26 +9,26 @@ CUT_OFF = 5.0
 struct WaringPoly
     num_vars::Int
     deg::Int
-    rank::Int
-    # can we include that M is a (rank x num_vars) dimensioned array?
+    length::Int
+    # can we include that M is a (length x num_vars) dimensioned array?
     M::Array{ComplexF64}
 end
 
-WaringPoly(num_vars,deg,rank) = WaringPoly(num_vars,deg,rank,randn(ComplexF64,rank,num_vars))
+WaringPoly(num_vars,deg,length) = WaringPoly(num_vars,deg,length,randn(ComplexF64,length,num_vars))
 
 function (poly::WaringPoly)(X)::ComplexF64
     # return sum((poly.M * X).^poly.deg)
     res = 0.0 + 0*im
-    for idx in 1:poly.rank
+    for idx in 1:poly.length
         res += sum(poly.M[idx,:] .* X)^poly.deg
     end
     return res
 end
 
-function build_waring_system(num_vars, degrees, ranks)
-    system = [WaringPoly(num_vars, degrees[1], ranks[1])]
+function build_waring_system(num_vars, degrees, lengths)
+    system = [WaringPoly(num_vars, degrees[1], lengths[1])]
     for idx in 2:length(degrees)
-        push!(system, WaringPoly(num_vars, degrees[idx], ranks[idx]))
+        push!(system, WaringPoly(num_vars, degrees[idx], lengths[idx]))
     end
     return system
 end
@@ -164,7 +164,7 @@ function print_input()
 end
 
 function print_output(success, system, W_0, final_root, use_heuristic,
-                      num_steps, avg_step_size, avg_newton_iters, avg_duration)
+        num_steps, avg_step_size, avg_newton_iters, avg_duration)
     println("")
     println("$(use_heuristic ? "Using a heuristic timestep..." : "Using a rigorous timestep...")")
     if success
@@ -174,7 +174,7 @@ function print_output(success, system, W_0, final_root, use_heuristic,
     end
     println("Average timestep: $avg_step_size")
     println("Average number of Newton iterations per step: $avg_newton_iters")
-    println("Average duration of choose_timestep: $avg_duration")
+    # println("Average duration of choose_timestep: $avg_duration")
     println("")
     if success
         println("Final root: $(round.(final_root; digits=8))")

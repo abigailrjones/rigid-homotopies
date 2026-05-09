@@ -9,7 +9,7 @@ include("choose_timestep.jl")
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root, path; filename::String=" ",
         use_heuristic::Bool=false, mid_print::Bool=false,
-        initial_dt::Number=0.1)
+        initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
@@ -24,7 +24,7 @@ end
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
-        mid_print::Bool=false, initial_dt::Number=0.1)
+        mid_print::Bool=false, initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
@@ -41,7 +41,7 @@ end
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, init_roots; use_heuristic::Bool=false,
-        mid_print::Bool=false, initial_dt::Number=0.1)
+        mid_print::Bool=false, initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
@@ -59,9 +59,10 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
                      initial_dt)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int; filename::String=" ", use_heuristic::Bool=false, mid_print::Bool=false,
-        initial_dt::Number=0.1)
+function solve(system::Vector, num_funcs::Int, num_vars::Int,
+        degrees::Vector{Int}, max_iter::Int; filename::String=" ",
+        use_heuristic::Bool=false, mid_print::Bool=false,
+        initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
@@ -115,8 +116,8 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
     end
 
     return final_root, num_steps, min_step_size, max_step_size, avg_step_size,
-    avg_duration, min_gammaprob, max_gammaprob, avg_gammaprob, min_condnum,
-    max_condnum, avg_condnum
+    min_gammaprob, max_gammaprob, avg_gammaprob, min_condnum, max_condnum,
+    avg_condnum
 end
 
 function build_path(start_system)
