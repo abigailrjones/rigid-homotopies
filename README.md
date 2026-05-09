@@ -44,6 +44,8 @@ Optional arguments for `solve`.
 We first build a random system `F`.
 
 ```
+include("rigid_hom.jl") # make sure you start the REPL in the directory containing this file
+
 num_vars = 3
 num_funcs = 2
 degrees = [2, 4]
