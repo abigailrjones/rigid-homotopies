@@ -6,29 +6,40 @@ CUT_OFF = 5.0
 
 ##############################################
 
-struct WaringPoly
+struct WaringPoly{T <: Union{ComplexF64, Float64}}
     num_vars::Int
     deg::Int
     length::Int
-    # can we include that M is a (length x num_vars) dimensioned array?
-    M::Array{ComplexF64}
+    M::Array{T}
+
+    # inner constructor checks that M has dimensions (length x num_vars)
+    WaringPoly{T}(num_vars,deg,length,M) where {T <: Union{ComplexF64, Float64}} = (size(M) == (length, num_vars)) ?
+        new(num_vars,deg,length,M) :
+        error("Coefficient matrix needs to have dimensions ($length, $num_vars), but has dimensions $(size(M))")
 end
 
-WaringPoly(num_vars,deg,length) = WaringPoly(num_vars,deg,length,randn(ComplexF64,length,num_vars))
+# constructor when M is explicitly passed in
+WaringPoly(num_vars::Int, deg::Int, length::Int, M::Array{T}) where {T <: Union{ComplexF64, Float64}} = WaringPoly{T}(num_vars, deg, length, M)
 
-function (poly::WaringPoly)(X)::ComplexF64
-    # return sum((poly.M * X).^poly.deg)
-    res = 0.0 + 0*im
+# constructor when M is chosen randomly
+function WaringPoly(::Type{T}, num_vars::Int, deg::Int, length::Int) where T <: Union{ComplexF64, Float64}
+    return WaringPoly(num_vars,deg,length,randn(T,length,num_vars))
+end
+
+# evaluate Waring polynomial
+function (poly::WaringPoly{T})(X)::T where T <: Union{ComplexF64, Float64}
+    res = zero(T)
     for idx in 1:poly.length
         res += sum(poly.M[idx,:] .* X)^poly.deg
     end
     return res
 end
 
-function build_waring_system(num_vars, degrees, lengths)
-    system = [WaringPoly(num_vars, degrees[1], lengths[1])]
+# build random system of Waring polynomials with coefficient type given by T
+function build_waring_system(::Type{T}, num_vars, degrees, lengths) where T <: Union{ComplexF64, Float64}
+    system = [WaringPoly(T, num_vars, degrees[1], lengths[1])]
     for idx in 2:length(degrees)
-        push!(system, WaringPoly(num_vars, degrees[idx], lengths[idx]))
+        push!(system, WaringPoly(T, num_vars, degrees[idx], lengths[idx]))
     end
     return system
 end
