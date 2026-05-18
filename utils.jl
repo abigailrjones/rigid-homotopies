@@ -26,9 +26,9 @@ function WaringPoly(::Type{T}, num_vars::Int, deg::Int, length::Int) where T <: 
     return WaringPoly(num_vars,deg,length,randn(T,length,num_vars))
 end
 
-# evaluate Waring polynomial
-function (poly::WaringPoly{T})(X)::T where T <: Union{ComplexF64, Float64}
-    res = zero(T)
+# evaluate Waring polynomial, return type is type of X
+function (poly::WaringPoly{T})(X) where T <: Union{ComplexF64, Float64}
+    res = zero(eltype(X))
     for idx in 1:poly.length
         res += sum(poly.M[idx,:] .* X)^poly.deg
     end
@@ -65,52 +65,77 @@ function check_homogeneous(system, num_vars, degrees)
     end
 end
 
+# TODO if type is real and any degree is even, computation will fail for Waring
+# type polynomials. Warn or error out for this input.
+function check_solvable()
+end
+
 # returns a vector with D+1 components, representing the 0:Dth degree
 # components of the given polynomial f evaluated at the input
-function compute_deg_components!(component_array,func,input::ComplexF64,D::Integer)
+function compute_deg_components!(component_array::Vector{ComplexF64},func,input::T,D::Integer) where T <: Union{ComplexF64, Float64}
+    complex_input = complex(input)
     for idx in 0:D
-        component_array[idx+1] = func(input)
-        input *= exp(2*pi*im/(D+1))
+        component_array[idx+1] = func(complex_input)
+        complex_input *= exp(2*pi*im/(D+1))
     end
     fft!(component_array)
     component_array ./= (D+1)
+    if T == Float64
+        if !isapprox(imag(component_array), zeros(D+1), atol=eps(Float64)^0.75)
+            println("Complex coefficients were found for a real system.  Be \
+                    wary of the results that follow. (The largest (deleted) \
+                    imaginary part has magnitude \
+                    $(maximum(abs.(imag(component_array)))).)")
+        end
+        # element type of component_array remains ComplexF64, but complex parts are exactly zero
+        component_array .= real(component_array)
+    end
     return
 end
 
-function compute_deg_components!(component_array,func,input::Vector{ComplexF64},D::Integer)
-    # return fft([func(exp(2*pi*im*j/(D+1))*input) for j in 0:D]) / (D+1)
+function compute_deg_components!(component_array::Vector{ComplexF64},func,input::Vector{T},D::Integer) where T <: Union{ComplexF64, Float64}
+    complex_input .= complex(input)
     for idx in 0:D
-        # component_array[idx+1] = func(exp(2*pi*im*idx/(D+1))*input)
-        component_array[idx+1] = func(input)
-        input .*= exp(2*pi*im/(D+1))
+        component_array[idx+1] = func(complex_input)
+        complex_input .*= exp(2*pi*im/(D+1))
     end
     fft!(component_array)
     component_array ./= (D+1)
+    if T == Float64
+        if !isapprox(imag(component_array), zeros(D+1), atol=eps(Float64)^0.75)
+            println("Complex coefficients were found for a real system.  Be \
+                    wary of the results that follow. (The largest (deleted) \
+                    imaginary part has magnitude \
+                    $(maximum(abs.(imag(component_array)))).)")
+        end
+        # element type of component_array remains ComplexF64, but complex parts are exactly zero
+        component_array .= real(component_array)
+    end
     return
 end
 
 # TODO add option for additional constant arguments to func
-function build_gradient_reverse!(output, input, func)
-    grad = zeros(ComplexF64, length(input))
+function build_gradient_reverse!(output::AbstractArray{T}, input::Vector{T}, func) where T <: Union{ComplexF64, Float64}
+    grad = zeros(T, length(input))
     output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, Const(func), Active,
                               Duplicated(input, grad))[end]
     return grad
 end
 
 # TODO add option for additional constant arguments to func
-function build_gradient_reverse!(output, input, func, mat)
+function build_gradient_reverse!(output::AbstractArray{T}, input::Vector{T}, func, mat::Array{T}) where T <: Union{ComplexF64, Float64}
     shifted_input = mat * input
-    grad = zeros(ComplexF64, length(shifted_input))
+    grad = zeros(T, length(shifted_input))
     output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, Const(func), Active,
                               Duplicated(shifted_input, grad))[end]
     # transpose(conjugate transpose) = conjugate
     return transpose(mat) * grad
 end
 
-function build_jacobian_reverse(input, system, matrices=nothing)
+function build_jacobian_reverse(input::Vector{T}, system, matrices=nothing) where T <: Union{ComplexF64, Float64}
     # note that length(input) == num_vars
-    jac = zeros(ComplexF64, length(system), length(input))
-    output = zeros(ComplexF64, length(system))
+    jac = zeros(T, length(system), length(input))
+    output = zeros(T, length(system))
     if matrices == nothing
         for idx in 1:length(system)
             view(jac,idx,:) .= build_gradient_reverse!(view(output,idx), input,
@@ -125,8 +150,8 @@ function build_jacobian_reverse(input, system, matrices=nothing)
     return jac, output
 end
 
-function newton!(guess::Vector{ComplexF64}, system, matrices=nothing; max_iter=1000, tol=eps(Float64)^0.75)::Int
-    inc = Vector{ComplexF64}(undef, length(guess))
+function newton!(guess::Vector{T}, system, matrices=nothing; max_iter=1000, tol=eps(Float64)^0.75)::Int where T <: Union{ComplexF64, Float64}
+    inc = Vector{T}(undef, length(guess))
     err = 1.0
     num_iter = 0
     give_up = 1.0e10
