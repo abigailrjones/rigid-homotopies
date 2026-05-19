@@ -12,10 +12,13 @@ struct WaringPoly{T <: Union{ComplexF64, Float64}}
     length::Int
     M::Array{T}
 
-    # inner constructor checks that M has dimensions (length x num_vars)
-    WaringPoly{T}(num_vars,deg,length,M) where {T <: Union{ComplexF64, Float64}} = (size(M) == (length, num_vars)) ?
-        new(num_vars,deg,length,M) :
-        error("Coefficient matrix needs to have dimensions ($length, $num_vars), but has dimensions $(size(M))")
+    # inner constructor checks that parameters are positive, M has dimensions (length x num_vars)
+    WaringPoly{T}(num_vars,deg,length,M) where {T <: Union{ComplexF64, Float64}} =
+    (num_vars > 0 && deg > 0 && length > 0) ? (size(M) == (length, num_vars)) ?
+    new(num_vars,deg,length,M) : error("Coefficient matrix needs to have \
+                                       dimensions ($length, $num_vars), but \
+                                       has dimensions $(size(M))") :
+    error("Number of variables, degree, and length must be positive.")
 end
 
 # constructor when M is explicitly passed in
@@ -23,7 +26,11 @@ WaringPoly(num_vars::Int, deg::Int, length::Int, M::Array{T}) where {T <: Union{
 
 # constructor when M is chosen randomly
 function WaringPoly(::Type{T}, num_vars::Int, deg::Int, length::Int) where T <: Union{ComplexF64, Float64}
-    return WaringPoly(num_vars,deg,length,randn(T,length,num_vars))
+    if !(num_vars > 0 && deg > 0 && length > 0)
+        error("Number of variables, degree, and length must be positive.")
+    else
+        return WaringPoly{T}(num_vars,deg,length,randn(T,length,num_vars))
+    end
 end
 
 # evaluate Waring polynomial, return type is type of X
