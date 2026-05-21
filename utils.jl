@@ -72,9 +72,18 @@ function check_homogeneous(system, num_vars, degrees)
     end
 end
 
-# TODO if type is real and any degree is even, computation will fail for Waring
-# type polynomials. Warn or error out for this input.
-function check_solvable()
+function check_solvable(degrees)
+    flag = true
+    for deg in degrees
+        if (deg % 2) == 0
+            flag = false
+        end
+    end
+    if !flag
+        println("A real homogeneous system containing polynomials with even degree \
+            was inputted. Make sure nontrivial real solutions exist, otherwise \
+            the computation will certainly fail.")
+    end
 end
 
 # returns a vector with D+1 components, representing the 0:Dth degree
@@ -101,7 +110,7 @@ function compute_deg_components!(component_array::Vector{ComplexF64},func,input:
 end
 
 function compute_deg_components!(component_array::Vector{ComplexF64},func,input::Vector{T},D::Integer) where T <: Union{ComplexF64, Float64}
-    complex_input .= complex(input)
+    complex_input = complex(input)
     for idx in 0:D
         component_array[idx+1] = func(complex_input)
         complex_input .*= exp(2*pi*im/(D+1))
@@ -130,7 +139,7 @@ function build_gradient_reverse!(output::AbstractArray{T}, input::Vector{T}, fun
 end
 
 # TODO add option for additional constant arguments to func
-function build_gradient_reverse!(output::AbstractArray{T}, input::Vector{T}, func, mat::Array{T}) where T <: Union{ComplexF64, Float64}
+function build_gradient_reverse!(output::AbstractArray{T}, input::Vector{T}, func, mat::AbstractArray{T}) where T <: Union{ComplexF64, Float64}
     shifted_input = mat * input
     grad = zeros(T, length(shifted_input))
     output .= Enzyme.autodiff(ReverseHolomorphicWithPrimal, Const(func), Active,

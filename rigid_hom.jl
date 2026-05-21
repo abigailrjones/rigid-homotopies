@@ -1,11 +1,10 @@
 using Statistics
 
-# TODO I should figure out how julia handles includes (since I am including
-# utils in start_system)
 include("utils.jl")
 include("start_system.jl")
 include("choose_timestep.jl")
 
+# TODO extend to Float64
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root, path; filename::String=" ",
         use_heuristic::Bool=false, mid_print::Bool=false,
@@ -22,6 +21,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
                      initial_dt, filename=filename)
 end
 
+# TODO extend to Float64
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Float64=0.01)
@@ -39,6 +39,7 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
                      initial_dt)
 end
 
+# TODO extend to Float64
 function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
         max_iter::Int, init_roots; use_heuristic::Bool=false,
         mid_print::Bool=false, initial_dt::Float64=0.01)
@@ -59,16 +60,19 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
                      initial_dt)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int,
+function solve(::Type{T}, system::Vector, num_funcs::Int, num_vars::Int,
         degrees::Vector{Int}, max_iter::Int; filename::String=" ",
         use_heuristic::Bool=false, mid_print::Bool=false,
-        initial_dt::Float64=0.01)
+        initial_dt::Float64=0.01) where T <: Union{ComplexF64, Float64}
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
+    if T == Float64
+        check_solvable(degrees)
+    end
     max_degree = maximum(degrees)
     if (mid_print) println("The default random start system and start root will \
                        be used, as well as the default path.") end
-    start_system, start_root = build_start_system(system, degrees, num_vars)
+    start_system, start_root = build_start_system(T, system, degrees, num_vars)
     check_build_start_system(system, start_system, start_root, num_funcs)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
@@ -137,7 +141,7 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
     #            duration (5), min gammaprob (6), max gammaprob (7), avg gammaprob (8), min
     #            condnum (9), max condnum (10), avg condnum (11)]
 
-    root = complex(copy(start_root))
+    root = copy(start_root)
     if filename != " "
         write_data(filename, t, 0.0, 0.0, dt, root; overwrite=true)
     end
@@ -162,7 +166,7 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             t -= dt
             W_t = path(t)
             try
-                step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+                step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
                 if (filename != " ")# && (iter % round(Int,max_iter / 1000) == 0)
                     write_data(filename, t, 0.0, 0.0, dt, root)
                 end
@@ -192,7 +196,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                                                num_vars, 1, prog_data)
 
     iter_print = round(Int, (1 / dt) / 1000)
-    root = complex(copy(start_root))
+    root = copy(start_root)
     if filename != " "
         write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=true)
     end
@@ -214,7 +218,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         else
             t -= dt
             W_t = path(t)
-            step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+            step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
             # compute timestep for next step
             #=
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
@@ -246,7 +250,7 @@ function write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=false)
 end
 
 # changes root and prog_data in place
-function step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
+function step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
     num_newton_iter = 0
 
     try
@@ -254,7 +258,7 @@ function step_forward!(root, prog_data, dt, iter, system, W_t, mid_print)
         scale_root!(root)
     catch e
         if (mid_print) println("Newton's method failed with error $e after \
-                               $iter iterations.")
+                               $iter iterations (t = $t).")
         end
         throw(e)
     else

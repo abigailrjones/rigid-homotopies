@@ -1,5 +1,5 @@
 include("utils.jl")
-using LinearAlgebra: svd, diagm, eigvals!, I
+using LinearAlgebra: svd, diagm, eigvals!, I, det
 
 # input a vector containing a zero of each polynomial in the system, returns
 # the associated start system and start root
@@ -26,7 +26,7 @@ function build_start_system(::Type{T}, system, degrees::Vector{Int}, num_vars) w
         init_root = sample_zero_set(T, system[idx], num_vars, degrees[idx])
         start_system[idx] = map_init_to_start(system[idx], init_root,
                                               start_root, null_spaces[idx],
-                                              num_funcs, num_vars)
+                                              num_vars)
     end
 
     check_build_start_system(system,start_system,start_root,num_funcs)
@@ -58,9 +58,6 @@ function sample_linear_intersection(::Type{T}, num_funcs, num_vars) where T <: U
         # for linear forms the rank is automatically one, so the orthogonal
         # complement is spanned by the first row, and the null space is spanned
         # by remaining rows
-        # orthogonal complement to null space is spanned by first row of Vt (in
-        # this case), since null space is spanned by complex conjugate of
-        # remaining rows of Vt
         union_orthog_comp[idx,:] = svd_res.Vt[1,:]
         null_spaces[idx] = conj(svd_res.Vt[2:end,:])
     end
@@ -142,10 +139,11 @@ function sample_zero_set(::Type{T}, func, num_vars, deg) where T <: Union{Comple
     throw(ErrorException("Failed to sample an initial zero."))
 end
 
-function map_init_to_start(func, init_root::Vector{T}, start_root::Vector{T}, null_space::Array{T}, num_funcs, num_vars) where T <: Union{ComplexF64, Float64}
+function map_init_to_start(func, init_root::Vector{T}, start_root::Vector{T}, null_space::Array{T}, num_vars) where T <: Union{ComplexF64, Float64}
     grad_f = reshape(build_gradient_reverse!(zeros(T,1), init_root, func), (1,num_vars))
     svd_res = svd(grad_f, full=true)
     # getting columns of V as rows by just taking complex conjugate of Vt
+    # (tangent space is orthgonal to gradient vector, hence null space)
     tangent_space = conj(svd_res.Vt[2:end,:])
 
     # write init_root in terms of basis for tangent space
@@ -170,11 +168,19 @@ function map_init_to_start(func, init_root::Vector{T}, start_root::Vector{T}, nu
 
     svd_res = svd(transpose(null_space) * Gamma * conj(tangent_space))
     res = svd_res.U * svd_res.Vt
+    if T == Float64
+        if !isapprox(det(res), 1.0, atol=eps(Float64)^0.75)
+            svd_res.Vt[end,:] .*= -1
+            res = svd_res.U * svd_res.Vt
+            @assert isapprox(det(res), 1.0, atol=eps(Float64)^0.75)
+        end
+    end
     @assert isapprox(res*transpose(tangent_space) -
                      transpose(null_space)*Gamma, zeros(num_vars,num_vars-1),
                      atol=eps(Float64)^0.75)
 
     @assert isapprox(res * init_root - start_root, zeros(num_vars,1), atol=eps(Float64)^0.75)
-    @assert eltype(res) == T
+    # if T == Float64, this assert checks that the path we define later will stay in the reals
+    @assert eltype(log(res)) == T
     return res
 end
