@@ -2,6 +2,11 @@ using FFTW: fft!
 using Enzyme
 using LinearAlgebra: pinv, norm
 
+# TODO FIXME remove
+using Printf
+# using Debugger
+using Infiltrator
+
 CUT_OFF = 5.0
 
 ##############################################
@@ -166,7 +171,23 @@ function build_jacobian_reverse(input::Vector{T}, system, matrices=nothing) wher
     return jac, output
 end
 
-function newton!(guess::Vector{T}, system, matrices=nothing; max_iter=1000, tol=eps(Float64)^0.75)::Int where T <: Union{ComplexF64, Float64}
+# TODO remove
+function compute_condition_num(jac)
+    if length(size(jac))==1
+        # jacobian is one-dimensional, so row_norms is a scalar
+        row_norms = 1.0 / sqrt(sum(abs2, jac))
+    else
+        row_norms = 1.0 ./ sqrt.(sum(abs2, jac; dims=2))
+    end
+    L = jac .* row_norms
+    # note that svdvals lists singular values in descending order
+    return 1.0 / svdvals(L)[end]
+end
+
+# TODO remove flag
+function newton!(guess::Vector{T}, system, matrices=nothing; max_iter=100, tol=eps(Float64)^0.75, flag=true)::Int where T <: Union{ComplexF64, Float64}
+    # TODO remove
+    init_guess = copy(guess)
     inc = Vector{T}(undef, length(guess))
     err = 1.0
     num_iter = 0
@@ -176,11 +197,20 @@ function newton!(guess::Vector{T}, system, matrices=nothing; max_iter=1000, tol=
 
     while (err < give_up) && (num_iter < max_iter)
         jac, output = build_jacobian_reverse(guess, system, matrices)
+        # TODO remove
+        println(compute_condition_num(jac))
         inc .= (pinv(jac) * output)
         guess .-= inc
         residual = norm(output)
         err = norm(inc)
         num_iter += 1
+        # TODO remove flag
+        if (num_iter >= max_iter) && (num_conv < threshold) && (flag == true)
+            @infiltrate
+        end
+        # println("$num_iter $residual $err $(isapprox(err,0.0,atol=tol))")
+        # long_print(guess)
+        # long_print(inc)
 
         isapprox(err, 0.0, atol=tol) ? num_conv += 1 : num_conv = 0
 
@@ -199,8 +229,20 @@ function newton!(guess::Vector{T}, system, matrices=nothing; max_iter=1000, tol=
     end
 
     if num_iter >= max_iter
+        # TODO remove
+        # println("")
+        # println(init_guess)
+        # println(system)
+        # println(matrices)
         throw(ErrorException("Newton's method failed to converge within $max_iter iterations."))
         # return -2
+    end
+end
+
+# TODO remove
+function long_print(vec)
+    for elt in vec
+        @printf "%.16f " elt
     end
 end
 

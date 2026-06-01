@@ -166,7 +166,7 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
             t -= dt
             W_t = path(t)
             try
-                step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
+                step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print, true)
                 if (filename != " ")# && (iter % round(Int,max_iter / 1000) == 0)
                     write_data(filename, t, 0.0, 0.0, dt, root)
                 end
@@ -218,7 +218,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
         else
             t -= dt
             W_t = path(t)
-            step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
+            step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print, false)
             # compute timestep for next step
             #=
             dt = choose_timestep(system, W_t, root, max_degree, max_iter,
@@ -250,15 +250,16 @@ function write_data(filename, t, cond_num, gammafrob, dt, root; overwrite=false)
 end
 
 # changes root and prog_data in place
-function step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print)
+function step_forward!(root, prog_data, dt, t, iter, system, W_t, mid_print, use_heuristic)
     num_newton_iter = 0
 
     try
         num_newton_iter = newton!(root, system, W_t)
         scale_root!(root)
     catch e
-        if (mid_print) println("Newton's method failed with error $e after \
-                               $iter iterations (t = $t).")
+        if (mid_print)
+            println("Failure at time $t.")
+            print_output(false,nothing,nothing,nothing,use_heuristic,iter,prog_data[3],prog_data[4],nothing)
         end
         throw(e)
     else

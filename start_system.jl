@@ -86,7 +86,8 @@ function sample_zero_set(::Type{T}, func, num_vars, deg) where T <: Union{Comple
         PQ = randn(T, num_vars, 2)
         try
             sol = ones(T, 2)
-            newton!(sol, [func], [PQ], max_iter=100)
+            # TODO remove flag
+            newton!(sol, [func], [PQ], max_iter=100,flag=false)
             init_root .= PQ * sol
             check_sampled_init_root(func, init_root)
         catch e
@@ -121,7 +122,8 @@ function sample_zero_set(::Type{T}, func, num_vars, deg) where T <: Union{Comple
                 init_root .= PQ * [root, 1.0+0*im]
             end
             try
-                newton!(init_root, [func], max_iter=100)
+                # TODO remove flag
+                newton!(init_root, [func], max_iter=100, flag=false)
             catch
                 continue
             else
