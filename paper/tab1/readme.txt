@@ -6,12 +6,12 @@ for the resulting table of values.
 data, this can be done more efficiently by using GNU Parallel. In
 particular, if you run
 
-    parallel julia paper/tab1/track_data.jl ::: 2 ::: 3 ::: 4 5
+    parallel julia track_data.jl ::: 2 ::: 3 ::: 4 5
 
-from within the `rigid-homotopies' directory, then `track_data.jl' is
+from within the `rigid-homotopies/paper/tab1' directory, then `track_data.jl' is
 run with arguments (2,3,4) and (2,3,5). Choose a set of arguments that
 span the parameter space you care about and run the associated GNU
-parallel command. (Note: to make sure you are actually getting the set
+parallel command. Note: to make sure you are actually getting the set
 of arguments you wanted to get, you can always run
 
     parallel echo ::: 2 ::: 3 ::: 4 5
@@ -24,9 +24,9 @@ first. In this example, the output should be
 For the current Table 1, the arguments we want require three GNU
 Parallel calls (***):
 
-    parallel julia paper/tab1/track_data.jl ::: 2 3 ::: 3 ::: 4 5 6
-    parallel julia paper/tab1/track_data.jl ::: 2 3 ::: 4 ::: 5 6 7
-    parallel julia paper/tab1/track_data.jl ::: 2 3 ::: 5 ::: 6 7 8.
+    parallel julia track_data.jl ::: 2 3 ::: 3 ::: 4 5 6
+    parallel julia track_data.jl ::: 2 3 ::: 4 ::: 5 6 7
+    parallel julia track_data.jl ::: 2 3 ::: 5 ::: 6 7 8.
 
 If you wish to reuse the data already computed, it can be found in
 `data'.
