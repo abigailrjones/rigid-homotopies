@@ -9,26 +9,26 @@ CUT_OFF = 5.0
 struct WaringPoly
     num_vars::Int
     deg::Int
-    length::Int
-    # can we include that M is a (length x num_vars) dimensioned array?
+    len::Int
+    # can we include that M is a (len x num_vars) dimensioned array?
     M::Array{ComplexF64}
 end
 
-WaringPoly(num_vars,deg,length) = WaringPoly(num_vars,deg,length,randn(ComplexF64,length,num_vars))
+WaringPoly(num_vars,deg,len) = WaringPoly(num_vars,deg,len,randn(ComplexF64,len,num_vars))
 
 function (poly::WaringPoly)(X)::ComplexF64
     # return sum((poly.M * X).^poly.deg)
     res = 0.0 + 0*im
-    for idx in 1:poly.length
+    for idx in 1:poly.len
         res += sum(poly.M[idx,:] .* X)^poly.deg
     end
     return res
 end
 
-function build_waring_system(num_vars, degrees, lengths)
-    system = [WaringPoly(num_vars, degrees[1], lengths[1])]
+function build_waring_system(num_vars, degrees, lens)
+    system = [WaringPoly(num_vars, degrees[1], lens[1])]
     for idx in 2:length(degrees)
-        push!(system, WaringPoly(num_vars, degrees[idx], lengths[idx]))
+        push!(system, WaringPoly(num_vars, degrees[idx], lens[idx]))
     end
     return system
 end

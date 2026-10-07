@@ -6,42 +6,46 @@ include("utils.jl")
 include("start_system.jl")
 include("choose_timestep.jl")
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int, start_system, start_root, path; filename::String=" ",
-        use_heuristic::Bool=false, mid_print::Bool=false,
+function solve(system::Vector, num_funcs::Int, num_vars::Int,
+        degrees::Vector{Int}, max_iter::Int, start_system, start_root, path;
+        filename::String=" ", use_heuristic::Bool=false, mid_print::Bool=false,
         initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
     if (mid_print) println("A start system, start root, and path were provided.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
+    path_speed = sqrt(sum(norm.(log.(start_system)).^2)/2)
     # TODO check_build_path
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt, filename=filename)
+                     initial_dt, path_speed, filename=filename)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int, start_system, start_root; use_heuristic::Bool=false,
-        mid_print::Bool=false, initial_dt::Float64=0.01)
+function solve(system::Vector, num_funcs::Int, num_vars::Int,
+        degrees::Vector{Int}, max_iter::Int, start_system, start_root;
+        filename::String=" ", use_heuristic::Bool=false, mid_print::Bool=false,
+        initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
     if (mid_print) println("A start system and start root were provided. The \
                             default path will be used.") end
     check_build_start_system(system, start_system, start_root, num_funcs)
+    path_speed = sqrt(sum(norm.(log.(start_system)).^2)/2)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt)
+                     initial_dt, path_speed, filename=filename)
 end
 
-function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{Int},
-        max_iter::Int, init_roots; use_heuristic::Bool=false,
-        mid_print::Bool=false, initial_dt::Float64=0.01)
+function solve(system::Vector, num_funcs::Int, num_vars::Int,
+        degrees::Vector{Int}, max_iter::Int, init_roots; filename::String=" ",
+        use_heuristic::Bool=false, mid_print::Bool=false,
+        initial_dt::Float64=0.01)
     check_inputs(num_funcs, num_vars)
     check_homogeneous(system, num_vars, degrees)
     max_degree = maximum(degrees)
@@ -51,12 +55,13 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int, degrees::Vector{In
     check_init_roots(system, init_roots, num_vars)
     start_system, start_root = build_start_system(system, init_roots, num_vars)
     check_build_start_system(system, start_system, start_root, num_funcs)
+    path_speed = sqrt(sum(norm.(log.(start_system)).^2)/2)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt)
+                     initial_dt, path_speed, filename=filename)
 end
 
 function solve(system::Vector, num_funcs::Int, num_vars::Int,
@@ -70,17 +75,19 @@ function solve(system::Vector, num_funcs::Int, num_vars::Int,
                        be used, as well as the default path.") end
     start_system, start_root = build_start_system(system, degrees, num_vars)
     check_build_start_system(system, start_system, start_root, num_funcs)
+    path_speed = sqrt(sum(norm.(log.(start_system)).^2)/2)
     path = build_path(start_system)
     check_build_path(path, start_system, num_vars)
 
     return rigid_hom(system, num_funcs, num_vars, max_degree, max_iter,
                      start_system, start_root, path, use_heuristic, mid_print,
-                     initial_dt, filename=filename)
+                     initial_dt, path_speed, filename=filename)
 end
 
-function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::Int,
-        max_iter::Int, start_system, start_root, path, use_heuristic::Bool,
-        mid_print::Bool, initial_dt; filename::String=" ")
+function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int,
+        max_degree::Int, max_iter::Int, start_system, start_root, path,
+        use_heuristic::Bool, mid_print::Bool, initial_dt, path_speed::Float64;
+        filename::String=" ")
     success, final_root, num_steps, min_step_size, max_step_size,
     avg_step_size, avg_newton_iters, avg_duration, min_gammaprob,
     max_gammaprob, avg_gammaprob, min_condnum, max_condnum, avg_condnum =
@@ -88,7 +95,8 @@ function rigid_hom(system::Vector, num_funcs::Int, num_vars::Int, max_degree::In
                                          max_iter, num_funcs, num_vars,
                                          mid_print, initial_dt, filename) :
                     track_path(system, path, start_root, max_degree, max_iter,
-                               num_funcs, num_vars, mid_print, filename)
+                               num_funcs, num_vars, path_speed, mid_print,
+                               filename)
 
     if success
         try
@@ -124,7 +132,8 @@ function build_path(start_system)
     # we are building the path given in section 3.4 of RH1 (see p.512)
     # taking conjugate transpose now because this is how the matrices act on
     # the input of the polynomial system
-    return t -> [exp(t * log(mat))' for mat in start_system]
+    log_start_system = log.(start_system)
+    return t -> [exp(t * mat)' for mat in log_start_system]
 end
 
 function track_path_heuristic(system, path, start_root, max_degree, max_iter,
@@ -180,7 +189,7 @@ function track_path_heuristic(system, path, start_root, max_degree, max_iter,
 end
 
 function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
-        num_vars, mid_print, filename)
+        num_vars, path_speed, mid_print, filename)
     t = 1.0
     prog_data = [1.0, 0.0, 0.0, 0.0, 0.0, Inf, 0.0, 0.0, Inf, 0.0, 0.0]
     #         = [min dt (1), max dt (2), avg dt (3), avg newton iter (4), avg choose_timestep
@@ -190,6 +199,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
     dt, cond_num, gammafrob = choose_timestep!(system, W_t, start_root,
                                                max_degree, max_iter, num_funcs,
                                                num_vars, 1, prog_data)
+    dt /= path_speed
 
     iter_print = round(Int, (1 / dt) / 1000)
     root = complex(copy(start_root))
@@ -224,6 +234,7 @@ function track_path(system, path, start_root, max_degree, max_iter, num_funcs,
                                                        max_degree, max_iter,
                                                        num_funcs, num_vars,
                                                        iter+1, prog_data)
+            dt /= path_speed
 
             if (filename != " ") && (iter % iter_print == 0)
                 write_data(filename, t, cond_num, gammafrob, dt, root)
